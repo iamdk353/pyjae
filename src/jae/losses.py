@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 def jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_target, x2_target, latent_weight=1.0):
     """
-    Original JAE loss function (Altan et al., 2021).
+    Original JAE loss function from Altan et al. (2021).
 
     Combines reconstruction MSE for both views with latent space alignment MSE.
     The loss encourages both accurate reconstruction and similar latent representations
@@ -97,8 +97,8 @@ def vicreg_loss(latents, lambda_inv=25.0, mu_var=25.0, nu_cov=1.0, epsilon=1e-4)
     2. Variance: Prevents collapse by maintaining variance in each dimension
     3. Covariance: Decorrelates dimensions to maximize information content
 
-    Reference: Bardes et al. (2022) "VICReg: Variance-Invariance-Covariance 
-    Regularization for Self-Supervised Learning"
+    Reference: Bardes, A., Ponce, J., & LeCun, Y. (2022). "VICReg: 
+    Variance-Invariance-Covariance Regularization for Self-Supervised Learning." ICLR.
 
     Args:
         latents (list of torch.Tensor): List of latent representations, each with

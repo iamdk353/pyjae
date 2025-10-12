@@ -1,8 +1,9 @@
 """
 Original Joint Autoencoder (JAE1) implementation.
 
-Based on Altan et al. (2021) - "Large-scale neural recordings call for new insights 
-to link brain and behavior" PLOS Computational Biology.
+Based on Altan, E., Solla, S. A., Miller, L. E., & Perreault, E. J. (2021).
+"Estimating the dimensionality of the manifold underlying multi-electrode 
+neural recordings." PLOS Computational Biology, 17(11), e1008591.
 """
 
 import torch

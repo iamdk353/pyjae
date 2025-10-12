@@ -4,7 +4,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A modern PyTorch implementation of Joint Autoencoders (JAE) for denoising high-dimensional neural signals, based on [Altan et al. (2021)](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1008722) with state-of-the-art enhancements.
+A modern PyTorch implementation of Joint Autoencoders (JAE) for denoising high-dimensional neural signals, based on Altan et al. (2021) "Estimating the dimensionality of the manifold underlying multi-electrode neural recordings" with state-of-the-art enhancements.
 
 ## Features
 
@@ -138,11 +138,15 @@ denoiser.fit(
 If you use this package in your research, please cite the original paper:
 
 ```bibtex
-@article{altan2021large,
-  title={Large-scale neural recordings with single neuron resolution using Neuropixels probes},
-  author={Altan, Evren and others},
+@article{altan2021jae,
+  title={Estimating the dimensionality of the manifold underlying multi-electrode neural recordings},
+  author={Altan, Ege and Solla, Sara A. and Miller, Lee E. and Perreault, Eric J.},
   journal={PLOS Computational Biology},
-  year={2021}
+  year={2021},
+  volume={17},
+  number={11},
+  pages={e1008591},
+  doi={10.1371/journal.pcbi.1008591}
 }
 ```
 
@@ -156,9 +160,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-- Original JAE paper: Altan et al. (2021)
-- VICReg: Bardes et al. (2022)
-- U-Net architecture: Ronneberger et al. (2015)
+- Original JAE method: Altan, E., Solla, S. A., Miller, L. E., & Perreault, E. J. (2021). Estimating the dimensionality of the manifold underlying multi-electrode neural recordings. PLOS Computational Biology.
+- VICReg loss function: Bardes, A., Ponce, J., & LeCun, Y. (2022). VICReg: Variance-Invariance-Covariance Regularization for Self-Supervised Learning. ICLR.
+- U-Net architecture: Ronneberger, O., Fischer, P., & Brox, T. (2015). U-Net: Convolutional Networks for Biomedical Image Segmentation. MICCAI.
 
 ## Support
 
