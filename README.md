@@ -23,17 +23,17 @@ A modern PyTorch implementation of Joint Autoencoders (JAE) for denoising high-d
 
 ```python
 import numpy as np
-from jae import JAEDenoiser
+from jae import JAE
 
 # Your noisy neural data: shape (n_samples, n_channels, n_timepoints)
 noisy_data = np.random.randn(100, 96, 128)
 
 # Create and train denoiser (uses JAE2 by default)
-denoiser = JAEDenoiser(latent_dim=12, use_gpu=True)
-denoiser.fit(noisy_data, epochs=100)
+model = JAE(latent_dim=12, use_gpu=True)
+model.fit(noisy_data, epochs=100)
 
 # Denoise your signals
-clean_data = denoiser.denoise(noisy_data)
+clean_data = model.denoise(noisy_data)
 ```
 
 ## Installation
@@ -68,25 +68,25 @@ Visit [PyTorch installation guide](https://pytorch.org/get-started/locally/) for
 ### Basic Denoising
 
 ```python
-from jae import JAEDenoiser
+from jae import JAE
 
 # Initialize with automatic parameter detection
-denoiser = JAEDenoiser()  # Will auto-detect latent_dim from input
+model = JAE()  # Will auto-detect latent_dim from input
 
 # Fit and denoise in one step
-clean_data = denoiser.fit_denoise(noisy_data, epochs=150)
+clean_data = model.fit_denoise(noisy_data, epochs=150)
 ```
 
 ### Comparing JAE1 vs JAE2
 
 ```python
 # Original JAE (2021)
-jae1 = JAEDenoiser(model_type='jae1', latent_dim=12)
+jae1 = JAE(model_type='jae1', latent_dim=12)
 jae1.fit(noisy_data, epochs=100)
 clean_jae1 = jae1.denoise(noisy_data)
 
 # Modernized JAE2 (default)
-jae2 = JAEDenoiser(model_type='jae2', latent_dim=12, num_networks=5)
+jae2 = JAE(model_type='jae2', latent_dim=12, num_networks=5)
 jae2.fit(noisy_data, epochs=100)
 clean_jae2 = jae2.denoise(noisy_data)
 ```
@@ -94,7 +94,7 @@ clean_jae2 = jae2.denoise(noisy_data)
 ### Advanced Configuration
 
 ```python
-denoiser = JAEDenoiser(
+model = JAE(
     model_type='jae2',
     latent_dim=16,
     num_networks=8,           # More parallel networks
@@ -104,7 +104,7 @@ denoiser = JAEDenoiser(
     device='cuda:0'           # Specific GPU
 )
 
-denoiser.fit(
+model.fit(
     noisy_data,
     epochs=200,
     batch_size=64,
