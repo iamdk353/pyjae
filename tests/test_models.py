@@ -204,13 +204,15 @@ class TestJAE2:
 
     def test_gradient_flow(self):
         """Test gradient flow through JAE2."""
-        model = JAE2(input_dim=96, latent_dim=12, num_networks=3)
+        model = JAE2(input_dim=96, latent_dim=12, num_networks=3, subsample_fraction=1.0)
         x = torch.randn(4, 96, 128)
 
         denoised, recons, latents, inputs_sub = model(x)
-        loss = denoised.mean()
+        # Use a loss that involves all outputs to ensure all parameters get gradients
+        loss = denoised.sum() + sum(r.sum() for r in recons) + sum(l.sum() for l in latents)
         loss.backward()
 
+        # With subsample_fraction=1.0 and comprehensive loss, all parameters should have gradients
         for param in model.parameters():
             assert param.grad is not None
 

@@ -222,7 +222,8 @@ class TestJAESaveLoad:
     def fitted_model(self):
         """Create a fitted model for testing."""
         data = np.random.randn(50, 96, 64).astype(np.float32)
-        model = JAE(latent_dim=8, verbose=False)
+        # Use JAE1 for deterministic behavior in save/load tests
+        model = JAE(model_type='jae1', latent_dim=8, verbose=False)
         model.fit(data, epochs=2, batch_size=8)
         return model
 

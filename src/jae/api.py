@@ -506,7 +506,13 @@ class JAE:
             >>> model.load('my_jae_model.pth')
             >>> clean = model.denoise(noisy_data)
         """
-        checkpoint = torch.load(path, map_location=self.device)
+        # Set weights_only=False because we save custom config objects
+        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+
+        # Restore model type and config
+        self.model_type = checkpoint['model_type']
+        self.config = checkpoint['config']
+        self.latent_dim = checkpoint['latent_dim']
 
         # Initialize model with saved architecture
         self._initialize_model(checkpoint['input_channels'])
