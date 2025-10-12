@@ -159,6 +159,391 @@ def generate_simulated_data(
     )
 
 
+def generate_neural_data_with_transients(
+    n_samples=1000,
+    seq_len=128,
+    n_channels=96,
+    latent_dim=8,
+    noise_level=0.5,
+    n_transients=5,
+    normalize=True,
+    seed=42
+):
+    """
+    Generate neural data with sharp transients (spikes) that benefit from U-Net.
+
+    This scenario favors JAE2 (U-Net) over JAE1 (FC) because:
+    - Sharp transients require temporal context
+    - Skip connections preserve spike timing
+    - FC networks process each timepoint independently
+
+    Args:
+        n_samples (int): Number of samples.
+        seq_len (int): Sequence length.
+        n_channels (int): Number of channels.
+        latent_dim (int): Latent dimensionality.
+        noise_level (float): Noise level (0-1).
+        n_transients (int): Number of transient events per sample.
+        normalize (bool): Whether to normalize data.
+        seed (int): Random seed.
+
+    Returns:
+        tuple: (clean_data, noisy_data, snr_db)
+    """
+    np.random.seed(seed)
+
+    # Generate smooth baseline
+    t = np.linspace(0, 8 * np.pi, seq_len)
+    latents = np.zeros((n_samples, latent_dim, seq_len))
+
+    for i in range(n_samples):
+        for d in range(latent_dim):
+            # Smooth baseline
+            freq = np.random.uniform(0.3, 1.0)
+            phase = np.random.uniform(0, 2 * np.pi)
+            latents[i, d, :] = np.sin(freq * t + phase)
+
+            # Add sharp transients (spike-like events)
+            for _ in range(n_transients):
+                spike_time = np.random.randint(10, seq_len - 10)
+                spike_width = np.random.randint(2, 5)
+                spike_amp = np.random.uniform(2.0, 4.0)
+                # Gaussian spike
+                spike = spike_amp * np.exp(-0.5 * ((np.arange(seq_len) - spike_time) / spike_width) ** 2)
+                latents[i, d, :] += spike
+
+    # Project to high-dimensional space
+    projection_matrix = np.random.rand(n_channels, latent_dim)
+    if normalize:
+        # Normalize rows to prevent explosion
+        projection_matrix = projection_matrix / (np.linalg.norm(projection_matrix, axis=1, keepdims=True) + 1e-8)
+
+    latents_reshaped = latents.transpose(0, 2, 1).reshape(n_samples * seq_len, latent_dim)
+    clean_data_flat = latents_reshaped @ projection_matrix.T
+    clean_data = clean_data_flat.reshape(n_samples, seq_len, n_channels).transpose(0, 2, 1)
+
+    # Normalize to prevent activation explosions
+    if normalize:
+        # Z-score normalization per channel
+        mean = clean_data.mean()
+        std = clean_data.std() + 1e-8
+        clean_data = (clean_data - mean) / std
+        # Shift to positive range
+        clean_data = clean_data - clean_data.min() + 0.5
+
+    # Add heterogeneous Gaussian noise
+    signal_power = np.mean(clean_data ** 2)
+    noise_std = np.sqrt(signal_power) * noise_level
+    noise = np.random.randn(*clean_data.shape) * noise_std
+    noisy_data = clean_data + noise
+
+    # Ensure non-negativity
+    noisy_data = np.maximum(0, noisy_data)
+
+    # Calculate actual SNR
+    snr_db = 10 * np.log10(np.mean(clean_data ** 2) / np.mean((clean_data - noisy_data) ** 2))
+
+    return (
+        torch.tensor(clean_data, dtype=torch.float32),
+        torch.tensor(noisy_data, dtype=torch.float32),
+        float(snr_db)
+    )
+
+
+def generate_heterogeneous_noise_data(
+    n_samples=1000,
+    seq_len=128,
+    n_channels=96,
+    latent_dim=8,
+    base_noise_level=0.3,
+    noise_heterogeneity=0.5,
+    normalize=True,
+    seed=42
+):
+    """
+    Generate data with heterogeneous noise across channels.
+
+    This scenario favors JAE2 (multi-view sampling) over JAE1 (fixed split) because:
+    - Noise varies across channels
+    - Random subsampling better adapts to noise distribution
+    - Fixed 50/50 split may separate channels with similar noise
+
+    Args:
+        n_samples (int): Number of samples.
+        seq_len (int): Sequence length.
+        n_channels (int): Number of channels.
+        latent_dim (int): Latent dimensionality.
+        base_noise_level (float): Base noise level.
+        noise_heterogeneity (float): How much noise varies across channels (0-1).
+        normalize (bool): Whether to normalize.
+        seed (int): Random seed.
+
+    Returns:
+        tuple: (clean_data, noisy_data, channel_snrs)
+    """
+    np.random.seed(seed)
+
+    # Generate latent dynamics
+    t = np.linspace(0, 10 * np.pi, seq_len)
+    latents = np.zeros((n_samples, latent_dim, seq_len))
+
+    for i in range(n_samples):
+        for d in range(latent_dim):
+            freq = np.random.uniform(0.5, 1.5)
+            phase = np.random.uniform(0, 2 * np.pi)
+            latents[i, d, :] = np.sin(freq * t + phase)
+
+    # Project with normalized matrix
+    projection_matrix = np.random.rand(n_channels, latent_dim)
+    if normalize:
+        projection_matrix = projection_matrix / (np.linalg.norm(projection_matrix, axis=1, keepdims=True) + 1e-8)
+
+    latents_reshaped = latents.transpose(0, 2, 1).reshape(n_samples * seq_len, latent_dim)
+    clean_data_flat = latents_reshaped @ projection_matrix.T
+    clean_data = clean_data_flat.reshape(n_samples, seq_len, n_channels).transpose(0, 2, 1)
+
+    if normalize:
+        mean = clean_data.mean()
+        std = clean_data.std() + 1e-8
+        clean_data = (clean_data - mean) / std
+        clean_data = clean_data - clean_data.min() + 0.5
+
+    # Add heterogeneous noise (different noise levels per channel)
+    channel_noise_levels = base_noise_level * (1 + noise_heterogeneity * np.random.randn(n_channels))
+    channel_noise_levels = np.clip(channel_noise_levels, 0.1, 2.0)
+
+    noisy_data = clean_data.copy()
+    signal_power = np.mean(clean_data ** 2, axis=(0, 2))  # Per channel
+
+    for ch in range(n_channels):
+        noise_std = np.sqrt(signal_power[ch]) * channel_noise_levels[ch]
+        noise = np.random.randn(n_samples, seq_len) * noise_std
+        noisy_data[:, ch, :] += noise
+
+    noisy_data = np.maximum(0, noisy_data)
+
+    # Calculate per-channel SNR
+    channel_snrs = np.zeros(n_channels)
+    for ch in range(n_channels):
+        sig_pow = np.mean(clean_data[:, ch, :] ** 2)
+        noise_pow = np.mean((clean_data[:, ch, :] - noisy_data[:, ch, :]) ** 2)
+        channel_snrs[ch] = 10 * np.log10(sig_pow / (noise_pow + 1e-10))
+
+    return (
+        torch.tensor(clean_data, dtype=torch.float32),
+        torch.tensor(noisy_data, dtype=torch.float32),
+        channel_snrs
+    )
+
+
+def generate_nonstationary_data(
+    n_samples=1000,
+    seq_len=128,
+    n_channels=96,
+    latent_dim=8,
+    noise_level=0.5,
+    regime_changes=3,
+    normalize=True,
+    seed=42
+):
+    """
+    Generate data with non-stationary dynamics (regime changes).
+
+    This favors JAE2 because:
+    - Temporal convolutions adapt to changing dynamics
+    - Multiple views capture different aspects of regimes
+    - VICReg handles rotated representations across regimes
+
+    Args:
+        n_samples (int): Number of samples.
+        seq_len (int): Sequence length.
+        n_channels (int): Number of channels.
+        latent_dim (int): Latent dimensionality.
+        noise_level (float): Noise level.
+        regime_changes (int): Number of regime changes per sample.
+        normalize (bool): Whether to normalize.
+        seed (int): Random seed.
+
+    Returns:
+        tuple: (clean_data, noisy_data, regime_boundaries)
+    """
+    np.random.seed(seed)
+
+    latents = np.zeros((n_samples, latent_dim, seq_len))
+    regime_boundaries = np.sort(np.random.randint(10, seq_len - 10, regime_changes))
+
+    for i in range(n_samples):
+        # Create regime boundaries
+        boundaries = [0] + list(regime_boundaries) + [seq_len]
+
+        for regime_idx in range(len(boundaries) - 1):
+            start = boundaries[regime_idx]
+            end = boundaries[regime_idx + 1]
+            t_segment = np.linspace(0, 5 * np.pi, end - start)
+
+            for d in range(latent_dim):
+                # Different frequency and phase per regime
+                freq = np.random.uniform(0.3, 2.0)
+                phase = np.random.uniform(0, 2 * np.pi)
+                amplitude = np.random.uniform(0.5, 2.0)
+                latents[i, d, start:end] = amplitude * np.sin(freq * t_segment + phase)
+
+    # Smooth transitions between regimes
+    for i in range(n_samples):
+        for boundary in regime_boundaries:
+            window_size = 5
+            for d in range(latent_dim):
+                if boundary - window_size >= 0 and boundary + window_size < seq_len:
+                    # Apply gaussian smoothing at boundaries
+                    weights = np.exp(-0.5 * (np.arange(-window_size, window_size + 1) / 2) ** 2)
+                    weights = weights / weights.sum()
+                    segment = latents[i, d, boundary - window_size:boundary + window_size + 1]
+                    latents[i, d, boundary - window_size:boundary + window_size + 1] = np.convolve(
+                        segment, weights, mode='same'
+                    )
+
+    # Project
+    projection_matrix = np.random.rand(n_channels, latent_dim)
+    if normalize:
+        projection_matrix = projection_matrix / (np.linalg.norm(projection_matrix, axis=1, keepdims=True) + 1e-8)
+
+    latents_reshaped = latents.transpose(0, 2, 1).reshape(n_samples * seq_len, latent_dim)
+    clean_data_flat = latents_reshaped @ projection_matrix.T
+    clean_data = clean_data_flat.reshape(n_samples, seq_len, n_channels).transpose(0, 2, 1)
+
+    if normalize:
+        mean = clean_data.mean()
+        std = clean_data.std() + 1e-8
+        clean_data = (clean_data - mean) / std
+        clean_data = clean_data - clean_data.min() + 0.5
+
+    # Add noise
+    signal_power = np.mean(clean_data ** 2)
+    noise_std = np.sqrt(signal_power) * noise_level
+    noise = np.random.randn(*clean_data.shape) * noise_std
+    noisy_data = clean_data + noise
+    noisy_data = np.maximum(0, noisy_data)
+
+    return (
+        torch.tensor(clean_data, dtype=torch.float32),
+        torch.tensor(noisy_data, dtype=torch.float32),
+        regime_boundaries
+    )
+
+
+def generate_data_scenarios(scenario='easy', n_samples=500, seed=42):
+    """
+    Generate data for different difficulty scenarios.
+
+    Scenarios:
+    - 'easy': Smooth sinusoids, homogeneous noise (JAE1 and JAE2 similar)
+    - 'transients': Sharp transients favor JAE2 (U-Net)
+    - 'heterogeneous': Heterogeneous noise favors JAE2 (multi-view)
+    - 'nonstationary': Regime changes favor JAE2 (temporal + VICReg)
+    - 'high_noise': High noise level challenges both
+
+    Args:
+        scenario (str): Scenario name.
+        n_samples (int): Number of samples.
+        seed (int): Random seed.
+
+    Returns:
+        dict: Contains 'clean', 'noisy', 'info' keys with data and metadata.
+    """
+    if scenario == 'easy':
+        clean, noisy = generate_simulated_data(
+            n_samples=n_samples,
+            seq_len=128,
+            n_channels=96,
+            latent_dim=8,
+            noise_level=0.3,
+            seed=seed
+        )
+        snr = calculate_snr(clean, noisy)
+        return {
+            'clean': clean,
+            'noisy': noisy,
+            'info': {'snr_db': snr, 'description': 'Smooth sinusoids, low noise'}
+        }
+
+    elif scenario == 'transients':
+        clean, noisy, snr = generate_neural_data_with_transients(
+            n_samples=n_samples,
+            seq_len=128,
+            n_channels=96,
+            latent_dim=8,
+            noise_level=0.5,
+            n_transients=5,
+            seed=seed
+        )
+        return {
+            'clean': clean,
+            'noisy': noisy,
+            'info': {'snr_db': snr, 'description': 'Sharp transients (spikes), favors U-Net'}
+        }
+
+    elif scenario == 'heterogeneous':
+        clean, noisy, channel_snrs = generate_heterogeneous_noise_data(
+            n_samples=n_samples,
+            seq_len=128,
+            n_channels=96,
+            latent_dim=8,
+            base_noise_level=0.3,
+            noise_heterogeneity=0.8,
+            seed=seed
+        )
+        avg_snr = np.mean(channel_snrs)
+        return {
+            'clean': clean,
+            'noisy': noisy,
+            'info': {
+                'snr_db': float(avg_snr),
+                'channel_snrs': channel_snrs,
+                'description': 'Heterogeneous noise across channels, favors multi-view'
+            }
+        }
+
+    elif scenario == 'nonstationary':
+        clean, noisy, boundaries = generate_nonstationary_data(
+            n_samples=n_samples,
+            seq_len=128,
+            n_channels=96,
+            latent_dim=8,
+            noise_level=0.4,
+            regime_changes=3,
+            seed=seed
+        )
+        snr = calculate_snr(clean, noisy)
+        return {
+            'clean': clean,
+            'noisy': noisy,
+            'info': {
+                'snr_db': snr,
+                'regime_boundaries': boundaries,
+                'description': 'Non-stationary dynamics, favors temporal convolutions'
+            }
+        }
+
+    elif scenario == 'high_noise':
+        clean, noisy = generate_simulated_data(
+            n_samples=n_samples,
+            seq_len=128,
+            n_channels=96,
+            latent_dim=8,
+            noise_level=1.2,  # High noise
+            seed=seed
+        )
+        snr = calculate_snr(clean, noisy)
+        return {
+            'clean': clean,
+            'noisy': noisy,
+            'info': {'snr_db': snr, 'description': 'High noise level, challenging for both'}
+        }
+
+    else:
+        raise ValueError(f"Unknown scenario: {scenario}. Choose from: easy, transients, heterogeneous, nonstationary, high_noise")
+
+
 def calculate_snr(signal, reconstruction):
     """
     Calculate Signal-to-Noise Ratio (SNR) in decibels.

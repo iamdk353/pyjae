@@ -17,6 +17,10 @@ from .models import JAE1, JAE2, SimpleAutoencoder, UNet1D
 from .utils import (
     get_device,
     generate_simulated_data,
+    generate_neural_data_with_transients,
+    generate_heterogeneous_noise_data,
+    generate_nonstationary_data,
+    generate_data_scenarios,
     calculate_snr,
     calculate_r2_score,
     calculate_correlation,
@@ -53,6 +57,10 @@ __all__ = [
     # Utilities
     "get_device",
     "generate_simulated_data",
+    "generate_neural_data_with_transients",
+    "generate_heterogeneous_noise_data",
+    "generate_nonstationary_data",
+    "generate_data_scenarios",
     "calculate_snr",
     "calculate_r2_score",
     "calculate_correlation",
