@@ -27,6 +27,12 @@ from .utils import (
     run_pca_baseline,
     validate_input_data,
     set_seed,
+    plot_signals,
+    plot_multichannel_signals,
+    plot_snr_comparison,
+    plot_channel_snr_distribution,
+    plot_training_history,
+    plot_regime_changes,
 )
 
 # Loss functions (for advanced users)
@@ -67,6 +73,12 @@ __all__ = [
     "run_pca_baseline",
     "validate_input_data",
     "set_seed",
+    "plot_signals",
+    "plot_multichannel_signals",
+    "plot_snr_comparison",
+    "plot_channel_snr_distribution",
+    "plot_training_history",
+    "plot_regime_changes",
     # Loss functions
     "jae1_loss_fn",
     "jae2_loss_fn",

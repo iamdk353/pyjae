@@ -755,3 +755,465 @@ def set_seed(seed):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
+
+def plot_signals(
+    signals_dict,
+    channel_idx=0,
+    sample_idx=0,
+    time_range=None,
+    title=None,
+    figsize=(15, 6),
+    show_legend=True,
+    save_path=None
+):
+    """
+    Plot multiple signals for comparison.
+
+    Args:
+        signals_dict (dict): Dictionary of {label: signal} where signal is
+            (n_samples, n_channels, seq_len) tensor or array.
+        channel_idx (int, optional): Channel to plot. Default: 0.
+        sample_idx (int, optional): Sample to plot. Default: 0.
+        time_range (tuple, optional): (start, end) time indices. Default: None (all).
+        title (str, optional): Plot title. Default: auto-generated.
+        figsize (tuple, optional): Figure size. Default: (15, 6).
+        show_legend (bool, optional): Whether to show legend. Default: True.
+        save_path (str, optional): Path to save figure. Default: None.
+
+    Returns:
+        matplotlib.figure.Figure: The figure object.
+
+    Example:
+        >>> import matplotlib.pyplot as plt
+        >>> clean, noisy = generate_simulated_data(n_samples=10)
+        >>> denoised = model.denoise(noisy)
+        >>> plot_signals({
+        ...     'Ground Truth': clean,
+        ...     'Noisy': noisy,
+        ...     'Denoised': denoised
+        ... }, channel_idx=0, sample_idx=0)
+        >>> plt.show()
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError("matplotlib is required for plotting. Install with: pip install matplotlib")
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Color scheme
+    colors = {
+        'Ground Truth': 'black',
+        'Clean': 'black',
+        'Noisy': 'gray',
+        'JAE1': 'blue',
+        'JAE2': 'red',
+        'PCA': 'purple',
+        'Denoised': 'green'
+    }
+    line_styles = {
+        'Ground Truth': '-',
+        'Clean': '-',
+        'Noisy': '-',
+        'JAE1': '--',
+        'JAE2': '-',
+        'PCA': ':',
+        'Denoised': '-'
+    }
+    line_widths = {
+        'Ground Truth': 2.5,
+        'Clean': 2.5,
+        'Noisy': 1.5,
+        'JAE1': 2,
+        'JAE2': 2.5,
+        'PCA': 2,
+        'Denoised': 2
+    }
+    alphas = {
+        'Ground Truth': 1.0,
+        'Clean': 1.0,
+        'Noisy': 0.6,
+        'JAE1': 0.9,
+        'JAE2': 1.0,
+        'PCA': 0.8,
+        'Denoised': 0.9
+    }
+
+    for label, signal in signals_dict.items():
+        # Convert to numpy if needed
+        if isinstance(signal, torch.Tensor):
+            signal = signal.detach().cpu().numpy()
+
+        # Extract the specific channel and sample
+        data = signal[sample_idx, channel_idx, :]
+
+        # Apply time range if specified
+        if time_range is not None:
+            start, end = time_range
+            data = data[start:end]
+            t = np.arange(start, end)
+        else:
+            t = np.arange(len(data))
+
+        # Get style parameters
+        color = colors.get(label, None)
+        linestyle = line_styles.get(label, '-')
+        linewidth = line_widths.get(label, 2)
+        alpha = alphas.get(label, 1.0)
+
+        ax.plot(t, data, label=label, color=color, linestyle=linestyle,
+                linewidth=linewidth, alpha=alpha)
+
+    ax.set_xlabel('Time (samples)', fontsize=12)
+    ax.set_ylabel('Signal Amplitude', fontsize=12)
+
+    if title is None:
+        title = f'Signal Comparison (Sample {sample_idx}, Channel {channel_idx})'
+    ax.set_title(title, fontsize=14, fontweight='bold')
+
+    if show_legend:
+        ax.legend(loc='best', fontsize=11, framealpha=0.9)
+
+    ax.grid(True, alpha=0.3)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+    return fig
+
+
+def plot_multichannel_signals(
+    signal,
+    n_channels_to_plot=8,
+    sample_idx=0,
+    title='Multi-channel Neural Signals',
+    figsize=(15, 10),
+    save_path=None
+):
+    """
+    Plot multiple channels of neural signals in a grid.
+
+    Args:
+        signal (torch.Tensor or np.ndarray): Signal data of shape
+            (n_samples, n_channels, seq_len).
+        n_channels_to_plot (int, optional): Number of channels to display. Default: 8.
+        sample_idx (int, optional): Sample index. Default: 0.
+        title (str, optional): Plot title. Default: 'Multi-channel Neural Signals'.
+        figsize (tuple, optional): Figure size. Default: (15, 10).
+        save_path (str, optional): Path to save figure. Default: None.
+
+    Returns:
+        matplotlib.figure.Figure: The figure object.
+
+    Example:
+        >>> import matplotlib.pyplot as plt
+        >>> clean, noisy = generate_simulated_data(n_samples=10)
+        >>> plot_multichannel_signals(noisy, n_channels_to_plot=8)
+        >>> plt.show()
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError("matplotlib is required for plotting. Install with: pip install matplotlib")
+
+    if isinstance(signal, torch.Tensor):
+        signal = signal.detach().cpu().numpy()
+
+    n_channels = min(n_channels_to_plot, signal.shape[1])
+    n_cols = 2
+    n_rows = (n_channels + 1) // 2
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, sharex=True)
+    axes = axes.flatten()
+
+    for i in range(n_channels):
+        data = signal[sample_idx, i, :]
+        t = np.arange(len(data))
+
+        axes[i].plot(t, data, color='steelblue', linewidth=1.5, alpha=0.8)
+        axes[i].set_title(f'Channel {i}', fontsize=10, fontweight='bold')
+        axes[i].set_ylabel('Amplitude', fontsize=9)
+        axes[i].grid(True, alpha=0.3)
+        axes[i].spines['top'].set_visible(False)
+        axes[i].spines['right'].set_visible(False)
+
+    # Set x-label for bottom plots
+    for i in range(n_channels - n_cols, n_channels):
+        if i < len(axes):
+            axes[i].set_xlabel('Time (samples)', fontsize=9)
+
+    # Hide unused subplots
+    for i in range(n_channels, len(axes)):
+        axes[i].set_visible(False)
+
+    fig.suptitle(title, fontsize=14, fontweight='bold', y=0.995)
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+    return fig
+
+
+def plot_snr_comparison(
+    results_dict,
+    title='Denoising Performance Comparison',
+    figsize=(10, 6),
+    save_path=None
+):
+    """
+    Plot SNR comparison across different methods.
+
+    Args:
+        results_dict (dict): Dictionary of {method_name: snr_value}.
+        title (str, optional): Plot title. Default: 'Denoising Performance Comparison'.
+        figsize (tuple, optional): Figure size. Default: (10, 6).
+        save_path (str, optional): Path to save figure. Default: None.
+
+    Returns:
+        matplotlib.figure.Figure: The figure object.
+
+    Example:
+        >>> import matplotlib.pyplot as plt
+        >>> results = {
+        ...     'Noisy': 5.2,
+        ...     'PCA': 8.5,
+        ...     'JAE1': 12.3,
+        ...     'JAE2': 15.7
+        ... }
+        >>> plot_snr_comparison(results)
+        >>> plt.show()
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError("matplotlib is required for plotting. Install with: pip install matplotlib")
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    methods = list(results_dict.keys())
+    snr_values = list(results_dict.values())
+
+    colors = ['gray', 'purple', 'blue', 'red', 'green', 'orange']
+    bars = ax.bar(methods, snr_values, color=colors[:len(methods)], alpha=0.7, edgecolor='black')
+
+    # Add value labels on bars
+    for bar, value in zip(bars, snr_values):
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width() / 2., height,
+                f'{value:.2f} dB', ha='center', va='bottom', fontsize=11, fontweight='bold')
+
+    ax.set_ylabel('SNR (dB)', fontsize=12, fontweight='bold')
+    ax.set_title(title, fontsize=14, fontweight='bold')
+    ax.grid(True, axis='y', alpha=0.3)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    plt.xticks(rotation=15, ha='right')
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+    return fig
+
+
+def plot_channel_snr_distribution(
+    channel_snrs,
+    title='Channel-wise SNR Distribution',
+    figsize=(12, 5),
+    save_path=None
+):
+    """
+    Plot distribution of SNR across channels.
+
+    Args:
+        channel_snrs (np.ndarray or list): SNR values for each channel.
+        title (str, optional): Plot title. Default: 'Channel-wise SNR Distribution'.
+        figsize (tuple, optional): Figure size. Default: (12, 5).
+        save_path (str, optional): Path to save figure. Default: None.
+
+    Returns:
+        matplotlib.figure.Figure: The figure object.
+
+    Example:
+        >>> import matplotlib.pyplot as plt
+        >>> _, _, channel_snrs = generate_heterogeneous_noise_data(n_samples=100)
+        >>> plot_channel_snr_distribution(channel_snrs)
+        >>> plt.show()
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError("matplotlib is required for plotting. Install with: pip install matplotlib")
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+
+    # Plot 1: SNR per channel
+    channels = np.arange(len(channel_snrs))
+    ax1.scatter(channels, channel_snrs, alpha=0.6, s=30, color='steelblue')
+    ax1.axhline(np.mean(channel_snrs), color='red', linestyle='--',
+                linewidth=2, label=f'Mean: {np.mean(channel_snrs):.2f} dB')
+    ax1.set_xlabel('Channel Index', fontsize=11)
+    ax1.set_ylabel('SNR (dB)', fontsize=11)
+    ax1.set_title('SNR per Channel', fontsize=12, fontweight='bold')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+
+    # Plot 2: Histogram
+    ax2.hist(channel_snrs, bins=20, color='steelblue', alpha=0.7, edgecolor='black')
+    ax2.axvline(np.mean(channel_snrs), color='red', linestyle='--',
+                linewidth=2, label=f'Mean: {np.mean(channel_snrs):.2f} dB')
+    ax2.axvline(np.median(channel_snrs), color='green', linestyle='--',
+                linewidth=2, label=f'Median: {np.median(channel_snrs):.2f} dB')
+    ax2.set_xlabel('SNR (dB)', fontsize=11)
+    ax2.set_ylabel('Count', fontsize=11)
+    ax2.set_title('SNR Distribution', fontsize=12, fontweight='bold')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+
+    fig.suptitle(title, fontsize=14, fontweight='bold', y=1.02)
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+    return fig
+
+
+def plot_training_history(
+    history_dict,
+    title='Training History',
+    figsize=(12, 5),
+    save_path=None
+):
+    """
+    Plot training and validation loss curves.
+
+    Args:
+        history_dict (dict): Dictionary with 'train_loss' and optionally 'val_loss'.
+        title (str, optional): Plot title. Default: 'Training History'.
+        figsize (tuple, optional): Figure size. Default: (12, 5).
+        save_path (str, optional): Path to save figure. Default: None.
+
+    Returns:
+        matplotlib.figure.Figure: The figure object.
+
+    Example:
+        >>> import matplotlib.pyplot as plt
+        >>> model = JAE(latent_dim=12)
+        >>> model.fit(data, epochs=100, validation_split=0.2)
+        >>> history = model.get_training_history()
+        >>> plot_training_history(history)
+        >>> plt.show()
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError("matplotlib is required for plotting. Install with: pip install matplotlib")
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    epochs = np.arange(1, len(history_dict['train_loss']) + 1)
+
+    ax.plot(epochs, history_dict['train_loss'], label='Training Loss',
+            color='blue', linewidth=2, marker='o', markersize=3, alpha=0.8)
+
+    if 'val_loss' in history_dict and len(history_dict['val_loss']) > 0:
+        ax.plot(epochs, history_dict['val_loss'], label='Validation Loss',
+                color='red', linewidth=2, marker='s', markersize=3, alpha=0.8)
+
+    ax.set_xlabel('Epoch', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Loss', fontsize=12, fontweight='bold')
+    ax.set_title(title, fontsize=14, fontweight='bold')
+    ax.set_yscale('log')
+    ax.legend(fontsize=11, framealpha=0.9)
+    ax.grid(True, alpha=0.3)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+    return fig
+
+
+def plot_regime_changes(
+    signal,
+    regime_boundaries,
+    sample_idx=0,
+    channel_idx=0,
+    title='Non-stationary Signal with Regime Changes',
+    figsize=(15, 5),
+    save_path=None
+):
+    """
+    Plot signal with regime change boundaries highlighted.
+
+    Args:
+        signal (torch.Tensor or np.ndarray): Signal of shape (n_samples, n_channels, seq_len).
+        regime_boundaries (list or np.ndarray): Indices where regimes change.
+        sample_idx (int, optional): Sample to plot. Default: 0.
+        channel_idx (int, optional): Channel to plot. Default: 0.
+        title (str, optional): Plot title. Default: 'Non-stationary Signal with Regime Changes'.
+        figsize (tuple, optional): Figure size. Default: (15, 5).
+        save_path (str, optional): Path to save figure. Default: None.
+
+    Returns:
+        matplotlib.figure.Figure: The figure object.
+
+    Example:
+        >>> import matplotlib.pyplot as plt
+        >>> clean, noisy, boundaries = generate_nonstationary_data(n_samples=10)
+        >>> plot_regime_changes(noisy, boundaries, sample_idx=0, channel_idx=0)
+        >>> plt.show()
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError("matplotlib is required for plotting. Install with: pip install matplotlib")
+
+    if isinstance(signal, torch.Tensor):
+        signal = signal.detach().cpu().numpy()
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    data = signal[sample_idx, channel_idx, :]
+    t = np.arange(len(data))
+
+    ax.plot(t, data, color='steelblue', linewidth=2, alpha=0.8, label='Signal')
+
+    # Highlight regime boundaries
+    colors = plt.cm.Set3(np.linspace(0, 1, len(regime_boundaries) + 1))
+    boundaries_extended = [0] + list(regime_boundaries) + [len(data)]
+
+    for i in range(len(boundaries_extended) - 1):
+        start = boundaries_extended[i]
+        end = boundaries_extended[i + 1]
+        ax.axvspan(start, end, alpha=0.2, color=colors[i], label=f'Regime {i+1}')
+
+    # Draw vertical lines at boundaries
+    for boundary in regime_boundaries:
+        ax.axvline(boundary, color='red', linestyle='--', linewidth=2, alpha=0.7)
+
+    ax.set_xlabel('Time (samples)', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Signal Amplitude', fontsize=12, fontweight='bold')
+    ax.set_title(title, fontsize=14, fontweight='bold')
+    ax.legend(loc='upper right', fontsize=10, framealpha=0.9)
+    ax.grid(True, alpha=0.3)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+
+    return fig
+
