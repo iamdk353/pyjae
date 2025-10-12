@@ -1,0 +1,25 @@
+---
+alwaysApply: true
+---
+
+Remember that the current year is 2025.
+
+Never run `npm run dev` without explicit instructions to do so from the user.
+
+Be concise and information rich with your responses - avoid being unnecessarily wordy.
+
+Make sure to thoroughly study the codebase to ensure that all code changes are minimal and precise.
+
+Assume that the frontend and backend server are already running when testing.
+
+Update the README as needed when a new feature is added or changed. Keep the README high level for people wanting to install and use the project.
+
+Ensure that newlines are always present at the bottom of every code file.
+
+Always keep the backend unit tests up to date and verify new functionality and fixes with unit tests.
+
+Keep the pyproject.toml in the base of the repo up to date if new packages are required.
+
+When running Python commands and servers on the command line, make sure that the Python environment is activated first: (from the base of the repo) source .venv/bin/activate
+
+Always make sure that imports are put at the top of the Python file, not in the middle of functions.
