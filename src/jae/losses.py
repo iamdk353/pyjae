@@ -162,12 +162,39 @@ def vicreg_loss(latents, lambda_inv=25.0, mu_var=25.0, nu_cov=1.0, epsilon=1e-4)
     return (lambda_inv * invariance_loss + mu_var * variance_loss + nu_cov * covariance_loss)
 
 
+def temporal_smoothness_loss(denoised_output):
+    """
+    Temporal smoothness regularization to reduce high-frequency artifacts.
+    
+    Penalizes large differences between consecutive time steps, encouraging
+    smoother outputs. This helps prevent jagged/oscillatory reconstructions
+    common in U-Net architectures.
+    
+    Args:
+        denoised_output (torch.Tensor): Denoised signal of shape (B, C, T).
+    
+    Returns:
+        torch.Tensor: Scalar smoothness loss (mean of temporal differences).
+    
+    Example:
+        >>> x = torch.randn(8, 96, 128)
+        >>> loss = temporal_smoothness_loss(x)
+        >>> print(loss.shape)  # torch.Size([])
+    """
+    # Compute first-order temporal differences
+    diff = denoised_output[:, :, 1:] - denoised_output[:, :, :-1]
+    # L2 norm of differences
+    return torch.mean(diff ** 2)
+
+
 def jae2_loss_fn(
     reconstructions,
     latents,
     targets,
+    denoised_output=None,
     recon_weight=1.0,
     vicreg_weight=0.1,
+    smoothness_weight=0.01,
     huber_delta=1.0,
     lambda_inv=25.0,
     mu_var=25.0,
@@ -176,17 +203,21 @@ def jae2_loss_fn(
     """
     Combined loss function for JAE2.
 
-    Combines robust Huber reconstruction loss with VICReg latent alignment.
-    The reconstruction term ensures accurate denoising, while the VICReg term
-    encourages consistent, informative latent representations across views.
+    Combines robust Huber reconstruction loss with VICReg latent alignment and
+    temporal smoothness regularization. The reconstruction term ensures accurate
+    denoising, VICReg encourages consistent latent representations across views,
+    and smoothness reduces high-frequency artifacts.
 
     Args:
         reconstructions (list of torch.Tensor): List of reconstructed views from
             each network.
         latents (list of torch.Tensor): List of latent representations from each network.
         targets (list of torch.Tensor): List of target (input) views for each network.
+        denoised_output (torch.Tensor, optional): Final denoised output (B, C, T) for
+            smoothness regularization. If None, smoothness is not applied.
         recon_weight (float, optional): Weight for reconstruction loss. Default: 1.0.
         vicreg_weight (float, optional): Weight for VICReg loss. Default: 0.1.
+        smoothness_weight (float, optional): Weight for temporal smoothness. Default: 0.01.
         huber_delta (float, optional): Delta parameter for Huber loss. Default: 1.0.
         lambda_inv (float, optional): VICReg invariance weight. Default: 25.0.
         mu_var (float, optional): VICReg variance weight. Default: 25.0.
@@ -199,12 +230,19 @@ def jae2_loss_fn(
         >>> recons = [torch.randn(8, 48, 64) for _ in range(5)]
         >>> latents = [torch.randn(8, 12) for _ in range(5)]
         >>> targets = [torch.randn(8, 48, 64) for _ in range(5)]
-        >>> loss = jae2_loss_fn(recons, latents, targets)
+        >>> denoised = torch.randn(8, 96, 128)
+        >>> loss = jae2_loss_fn(recons, latents, targets, denoised)
         >>> print(loss.shape)  # torch.Size([])
     """
     recon_loss = huber_reconstruction_loss(reconstructions, targets, delta=huber_delta)
     v_loss = vicreg_loss(latents, lambda_inv=lambda_inv, mu_var=mu_var, nu_cov=nu_cov)
+    
+    total_loss = recon_weight * recon_loss + vicreg_weight * v_loss
+    
+    # Add temporal smoothness if denoised output is provided
+    if denoised_output is not None:
+        smooth_loss = temporal_smoothness_loss(denoised_output)
+        total_loss = total_loss + smoothness_weight * smooth_loss
 
-    # The weighting balances the importance of reconstruction fidelity vs latent structure
-    return recon_weight * recon_loss + vicreg_weight * v_loss
+    return total_loss
 

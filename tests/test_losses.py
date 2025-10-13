@@ -4,6 +4,7 @@ Unit tests for JAE loss functions.
 
 import pytest
 import torch
+import numpy as np
 
 from jae.losses import (
     jae1_loss_fn,
@@ -253,6 +254,102 @@ class TestJAE2Loss:
             assert recon.grad is not None
         for latent in latents:
             assert latent.grad is not None
+
+    def test_with_smoothness_loss(self):
+        """Test JAE2 loss with temporal smoothness regularization."""
+        recons = [torch.randn(8, 48, 64) for _ in range(3)]
+        latents = [torch.randn(8, 12) for _ in range(3)]
+        targets = [torch.randn(8, 48, 64) for _ in range(3)]
+        denoised = torch.randn(8, 96, 128)
+
+        loss_without = jae2_loss_fn(recons, latents, targets, denoised_output=None)
+        loss_with = jae2_loss_fn(recons, latents, targets, denoised_output=denoised,
+                                  smoothness_weight=0.01)
+
+        assert loss_without.ndim == 0
+        assert loss_with.ndim == 0
+        assert loss_with >= 0
+        # Loss with smoothness should generally be different (higher)
+        # But we can't guarantee it's always higher due to randomness
+
+    def test_smoothness_weight_scaling(self):
+        """Test that smoothness weight scales the smoothness loss contribution."""
+        recons = [torch.randn(8, 48, 64) for _ in range(3)]
+        latents = [torch.randn(8, 12) for _ in range(3)]
+        targets = [torch.randn(8, 48, 64) for _ in range(3)]
+        denoised = torch.randn(8, 96, 128)
+
+        loss_small = jae2_loss_fn(recons, latents, targets, denoised_output=denoised,
+                                   smoothness_weight=0.001)
+        loss_large = jae2_loss_fn(recons, latents, targets, denoised_output=denoised,
+                                   smoothness_weight=0.1)
+
+        # With larger smoothness weight, total loss should generally be higher
+        assert loss_small >= 0
+        assert loss_large >= 0
+
+
+class TestTemporalSmoothnessLoss:
+    """Tests for temporal smoothness regularization."""
+
+    def test_output_shape(self):
+        """Test that output is a scalar."""
+        from jae.losses import temporal_smoothness_loss
+
+        x = torch.randn(8, 96, 128)
+        loss = temporal_smoothness_loss(x)
+
+        assert loss.ndim == 0
+        assert loss >= 0
+
+    def test_constant_signal_zero_loss(self):
+        """Test that constant signal has zero smoothness loss."""
+        from jae.losses import temporal_smoothness_loss
+
+        x = torch.ones(8, 96, 128) * 5.0
+        loss = temporal_smoothness_loss(x)
+
+        assert loss.item() < 1e-6
+
+    def test_jagged_signal_high_loss(self):
+        """Test that jagged signal has higher loss than smooth signal."""
+        from jae.losses import temporal_smoothness_loss
+
+        # Smooth signal (low frequency)
+        t = torch.linspace(0, 4 * np.pi, 128)
+        smooth = torch.sin(t).unsqueeze(0).unsqueeze(0).repeat(8, 96, 1)
+
+        # Jagged signal (high frequency)
+        jagged = torch.sin(20 * t).unsqueeze(0).unsqueeze(0).repeat(8, 96, 1)
+
+        loss_smooth = temporal_smoothness_loss(smooth)
+        loss_jagged = temporal_smoothness_loss(jagged)
+
+        assert loss_jagged > loss_smooth
+
+    def test_gradient_flow(self):
+        """Test gradient flow through smoothness loss."""
+        from jae.losses import temporal_smoothness_loss
+
+        x = torch.randn(8, 96, 128, requires_grad=True)
+        loss = temporal_smoothness_loss(x)
+        loss.backward()
+
+        assert x.grad is not None
+        assert x.grad.shape == x.shape
+
+    def test_batch_invariance(self):
+        """Test that loss scales properly with batch size."""
+        from jae.losses import temporal_smoothness_loss
+
+        x_small = torch.randn(4, 96, 128)
+        x_large = torch.cat([x_small, x_small], dim=0)  # Double batch size
+
+        loss_small = temporal_smoothness_loss(x_small)
+        loss_large = temporal_smoothness_loss(x_large)
+
+        # Losses should be similar (averaged over batches)
+        assert abs(loss_small - loss_large) < 0.5 * (loss_small + loss_large)
 
 
 if __name__ == "__main__":

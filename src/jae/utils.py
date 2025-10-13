@@ -135,13 +135,33 @@ def generate_simulated_data(
             # Add an offset to make the base signal positive
             latents[i, d, :] = np.sin(freq * t + phase) + np.random.uniform(1.5, 2.0)
 
-    # 2. Project to high-dimensional space using a non-negative mixing matrix
-    # This mimics how neurons (non-negative firing rates) capture underlying dynamics
-    projection_matrix = np.random.rand(n_channels, latent_dim)
+    # 2. Project to high-dimensional space with NONLINEAR mixing
+    # This mimics realistic neural transformations
+    projection_matrix_1 = np.random.randn(n_channels, latent_dim)
+    projection_matrix_2 = np.random.randn(n_channels, latent_dim)
+    projection_matrix_1 = projection_matrix_1 / (np.linalg.norm(projection_matrix_1, axis=1, keepdims=True) + 1e-8)
+    projection_matrix_2 = projection_matrix_2 / (np.linalg.norm(projection_matrix_2, axis=1, keepdims=True) + 1e-8)
 
     # Reshape for efficient projection
     latents_reshaped = latents.transpose(0, 2, 1).reshape(n_samples * seq_len, latent_dim)
-    clean_data_flat = latents_reshaped @ projection_matrix.T
+    
+    # Nonlinear mixing: linear + tanh + polynomial
+    linear_part = latents_reshaped @ projection_matrix_1.T
+    nonlinear_part = np.tanh(latents_reshaped @ projection_matrix_2.T)
+    
+    poly_features = []
+    for i in range(min(3, latent_dim)):
+        for j in range(i+1, min(4, latent_dim)):
+            poly_features.append(latents_reshaped[:, i] * latents_reshaped[:, j])
+    
+    if poly_features:
+        poly_matrix = np.random.randn(n_channels, len(poly_features))
+        poly_matrix = poly_matrix / (np.linalg.norm(poly_matrix, axis=0, keepdims=True) + 1e-8)
+        poly_part = np.column_stack(poly_features) @ poly_matrix.T
+        clean_data_flat = 0.5 * linear_part + 0.3 * nonlinear_part + 0.2 * poly_part
+    else:
+        clean_data_flat = 0.6 * linear_part + 0.4 * nonlinear_part
+    
     clean_data = clean_data_flat.reshape(n_samples, seq_len, n_channels).transpose(0, 2, 1)
 
     # 3. Add Noise scaled relative to signal power
@@ -212,14 +232,38 @@ def generate_neural_data_with_transients(
                 spike = spike_amp * np.exp(-0.5 * ((np.arange(seq_len) - spike_time) / spike_width) ** 2)
                 latents[i, d, :] += spike
 
-    # Project to high-dimensional space
-    projection_matrix = np.random.rand(n_channels, latent_dim)
+    # Project to high-dimensional space with NONLINEAR mixing
+    # Create two projection matrices for nonlinear combination
+    projection_matrix_1 = np.random.randn(n_channels, latent_dim)
+    projection_matrix_2 = np.random.randn(n_channels, latent_dim)
     if normalize:
         # Normalize rows to prevent explosion
-        projection_matrix = projection_matrix / (np.linalg.norm(projection_matrix, axis=1, keepdims=True) + 1e-8)
+        projection_matrix_1 = projection_matrix_1 / (np.linalg.norm(projection_matrix_1, axis=1, keepdims=True) + 1e-8)
+        projection_matrix_2 = projection_matrix_2 / (np.linalg.norm(projection_matrix_2, axis=1, keepdims=True) + 1e-8)
 
     latents_reshaped = latents.transpose(0, 2, 1).reshape(n_samples * seq_len, latent_dim)
-    clean_data_flat = latents_reshaped @ projection_matrix.T
+    
+    # Nonlinear mixing: mix linear + tanh(linear) + polynomial interactions
+    linear_part = latents_reshaped @ projection_matrix_1.T
+    nonlinear_part = np.tanh(latents_reshaped @ projection_matrix_2.T)
+    
+    # Add polynomial interactions (products of latent dimensions)
+    poly_features = []
+    for i in range(min(3, latent_dim)):
+        for j in range(i+1, min(4, latent_dim)):
+            poly_features.append(latents_reshaped[:, i] * latents_reshaped[:, j])
+    
+    if poly_features:
+        poly_matrix = np.random.randn(n_channels, len(poly_features))
+        if normalize:
+            poly_matrix = poly_matrix / (np.linalg.norm(poly_matrix, axis=0, keepdims=True) + 1e-8)
+        poly_part = np.column_stack(poly_features) @ poly_matrix.T
+        # Combine: 50% linear + 30% nonlinear + 20% polynomial
+        clean_data_flat = 0.5 * linear_part + 0.3 * nonlinear_part + 0.2 * poly_part
+    else:
+        # Combine: 60% linear + 40% nonlinear
+        clean_data_flat = 0.6 * linear_part + 0.4 * nonlinear_part
+    
     clean_data = clean_data_flat.reshape(n_samples, seq_len, n_channels).transpose(0, 2, 1)
 
     # Normalize to prevent activation explosions
@@ -293,13 +337,33 @@ def generate_heterogeneous_noise_data(
             phase = np.random.uniform(0, 2 * np.pi)
             latents[i, d, :] = np.sin(freq * t + phase)
 
-    # Project with normalized matrix
-    projection_matrix = np.random.rand(n_channels, latent_dim)
+    # Project with NONLINEAR mixing (same as transients scenario)
+    projection_matrix_1 = np.random.randn(n_channels, latent_dim)
+    projection_matrix_2 = np.random.randn(n_channels, latent_dim)
     if normalize:
-        projection_matrix = projection_matrix / (np.linalg.norm(projection_matrix, axis=1, keepdims=True) + 1e-8)
+        projection_matrix_1 = projection_matrix_1 / (np.linalg.norm(projection_matrix_1, axis=1, keepdims=True) + 1e-8)
+        projection_matrix_2 = projection_matrix_2 / (np.linalg.norm(projection_matrix_2, axis=1, keepdims=True) + 1e-8)
 
     latents_reshaped = latents.transpose(0, 2, 1).reshape(n_samples * seq_len, latent_dim)
-    clean_data_flat = latents_reshaped @ projection_matrix.T
+    
+    # Nonlinear mixing
+    linear_part = latents_reshaped @ projection_matrix_1.T
+    nonlinear_part = np.tanh(latents_reshaped @ projection_matrix_2.T)
+    
+    poly_features = []
+    for i in range(min(3, latent_dim)):
+        for j in range(i+1, min(4, latent_dim)):
+            poly_features.append(latents_reshaped[:, i] * latents_reshaped[:, j])
+    
+    if poly_features:
+        poly_matrix = np.random.randn(n_channels, len(poly_features))
+        if normalize:
+            poly_matrix = poly_matrix / (np.linalg.norm(poly_matrix, axis=0, keepdims=True) + 1e-8)
+        poly_part = np.column_stack(poly_features) @ poly_matrix.T
+        clean_data_flat = 0.5 * linear_part + 0.3 * nonlinear_part + 0.2 * poly_part
+    else:
+        clean_data_flat = 0.6 * linear_part + 0.4 * nonlinear_part
+    
     clean_data = clean_data_flat.reshape(n_samples, seq_len, n_channels).transpose(0, 2, 1)
 
     if normalize:
@@ -402,13 +466,33 @@ def generate_nonstationary_data(
                         segment, weights, mode='same'
                     )
 
-    # Project
-    projection_matrix = np.random.rand(n_channels, latent_dim)
+    # Project with NONLINEAR mixing
+    projection_matrix_1 = np.random.randn(n_channels, latent_dim)
+    projection_matrix_2 = np.random.randn(n_channels, latent_dim)
     if normalize:
-        projection_matrix = projection_matrix / (np.linalg.norm(projection_matrix, axis=1, keepdims=True) + 1e-8)
+        projection_matrix_1 = projection_matrix_1 / (np.linalg.norm(projection_matrix_1, axis=1, keepdims=True) + 1e-8)
+        projection_matrix_2 = projection_matrix_2 / (np.linalg.norm(projection_matrix_2, axis=1, keepdims=True) + 1e-8)
 
     latents_reshaped = latents.transpose(0, 2, 1).reshape(n_samples * seq_len, latent_dim)
-    clean_data_flat = latents_reshaped @ projection_matrix.T
+    
+    # Nonlinear mixing
+    linear_part = latents_reshaped @ projection_matrix_1.T
+    nonlinear_part = np.tanh(latents_reshaped @ projection_matrix_2.T)
+    
+    poly_features = []
+    for i in range(min(3, latent_dim)):
+        for j in range(i+1, min(4, latent_dim)):
+            poly_features.append(latents_reshaped[:, i] * latents_reshaped[:, j])
+    
+    if poly_features:
+        poly_matrix = np.random.randn(n_channels, len(poly_features))
+        if normalize:
+            poly_matrix = poly_matrix / (np.linalg.norm(poly_matrix, axis=0, keepdims=True) + 1e-8)
+        poly_part = np.column_stack(poly_features) @ poly_matrix.T
+        clean_data_flat = 0.5 * linear_part + 0.3 * nonlinear_part + 0.2 * poly_part
+    else:
+        clean_data_flat = 0.6 * linear_part + 0.4 * nonlinear_part
+    
     clean_data = clean_data_flat.reshape(n_samples, seq_len, n_channels).transpose(0, 2, 1)
 
     if normalize:

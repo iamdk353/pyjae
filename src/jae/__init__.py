@@ -41,6 +41,7 @@ from .losses import (
     jae2_loss_fn,
     huber_reconstruction_loss,
     vicreg_loss,
+    temporal_smoothness_loss,
 )
 
 # Configuration (for advanced users)
@@ -84,6 +85,7 @@ __all__ = [
     "jae2_loss_fn",
     "huber_reconstruction_loss",
     "vicreg_loss",
+    "temporal_smoothness_loss",
     # Configuration
     "JAE1Config",
     "JAE2Config",

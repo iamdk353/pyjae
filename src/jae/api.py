@@ -305,11 +305,13 @@ class JAE:
                     )
 
                 elif self.model_type == 'jae2':
-                    _, reconstructions, latents, targets = self.model(batch_data)
+                    denoised, reconstructions, latents, targets = self.model(batch_data)
                     loss = jae2_loss_fn(
                         reconstructions, latents, targets,
+                        denoised_output=denoised,  # Pass for smoothness regularization
                         recon_weight=self.config.recon_weight,
                         vicreg_weight=self.config.vicreg_weight,
+                        smoothness_weight=self.config.smoothness_weight,
                         huber_delta=self.config.huber_delta,
                         lambda_inv=self.config.lambda_inv,
                         mu_var=self.config.mu_var,
@@ -366,11 +368,13 @@ class JAE:
                         latent_weight=self.config.latent_weight
                     )
                 elif self.model_type == 'jae2':
-                    _, reconstructions, latents, targets = self.model(batch_data)
+                    denoised, reconstructions, latents, targets = self.model(batch_data)
                     loss = jae2_loss_fn(
                         reconstructions, latents, targets,
+                        denoised_output=denoised,
                         recon_weight=self.config.recon_weight,
-                        vicreg_weight=self.config.vicreg_weight
+                        vicreg_weight=self.config.vicreg_weight,
+                        smoothness_weight=self.config.smoothness_weight
                     )
 
                 val_loss += loss.item()

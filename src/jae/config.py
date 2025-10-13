@@ -49,11 +49,13 @@ class JAE2Config:
             Default: [32, 64].
         recon_weight (float): Weight for reconstruction loss. Default: 1.0.
         vicreg_weight (float): Weight for VICReg loss. Default: 0.1.
+        smoothness_weight (float): Weight for temporal smoothness regularization.
+            Helps reduce jagged artifacts in firing rate reconstructions. Default: 0.01.
         huber_delta (float): Delta parameter for Huber loss. Default: 1.0.
         lambda_inv (float): VICReg invariance weight. Default: 25.0.
         mu_var (float): VICReg variance weight. Default: 25.0.
         nu_cov (float): VICReg covariance weight. Default: 1.0.
-        learning_rate (float): Learning rate for optimizer. Default: 0.0005.
+        learning_rate (float): Learning rate for optimizer. U-Nets need lower LR. Default: 0.0003.
         weight_decay (float): Weight decay (L2 regularization). Default: 1e-5.
         epochs (int): Number of training epochs. Default: 100.
         batch_size (int): Batch size for training. Default: 32.
@@ -64,11 +66,12 @@ class JAE2Config:
     unet_channels: List[int] = field(default_factory=lambda: [32, 64])
     recon_weight: float = 1.0
     vicreg_weight: float = 0.1
+    smoothness_weight: float = 0.01
     huber_delta: float = 1.0
     lambda_inv: float = 25.0
     mu_var: float = 25.0
     nu_cov: float = 1.0
-    learning_rate: float = 0.0005
+    learning_rate: float = 0.0003  # Lower LR for U-Net stability
     weight_decay: float = 1e-5
     epochs: int = 100
     batch_size: int = 32
