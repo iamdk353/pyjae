@@ -1,66 +1,44 @@
 """
-Original Joint Autoencoder (JAE1) implementation.
-
-Based on Altan, E., Solla, S. A., Miller, L. E., & Perreault, E. J. (2021).
-"Estimating the dimensionality of the manifold underlying multi-electrode 
-neural recordings." PLOS Computational Biology, 17(11), e1008591.
+Original Joint Autoencoder implementation from Altan et al. (2021).
 """
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 class SimpleAutoencoder(nn.Module):
     """
-    A simple, shallow, fully connected autoencoder as depicted in the 2021 paper.
+    Simple fully-connected autoencoder with ReLU activations.
 
-    This autoencoder processes time points independently using fully connected layers
-    with ReLU activations and optional dropout at the input layer.
-
-    Args:
-        input_dim (int): Number of input features (channels).
-        latent_dim (int): Dimensionality of the latent space.
-        dropout_p (float, optional): Dropout probability at input layer. Default: 0.05.
-
-    Attributes:
-        dropout (nn.Dropout): Dropout layer applied at input.
-        encoder (nn.Sequential): Encoder network (Linear + ReLU).
-        decoder (nn.Sequential): Decoder network (Linear + ReLU).
-
-    Example:
-        >>> ae = SimpleAutoencoder(input_dim=48, latent_dim=12)
-        >>> x = torch.randn(32, 48)  # (batch, features)
-        >>> x_hat, z = ae(x)
-        >>> print(x_hat.shape, z.shape)  # torch.Size([32, 48]) torch.Size([32, 12])
+    Architecture per paper: Input -> Linear -> ReLU -> Linear -> ReLU -> Output
+    Dropout applied at input layer (p=0.05 default).
     """
 
     def __init__(self, input_dim, latent_dim, dropout_p=0.05):
-        super(SimpleAutoencoder, self).__init__()
+        super().__init__()
         self.dropout = nn.Dropout(dropout_p)
-        # Encoder and Decoder use ReLU as specified in the paper
         self.encoder = nn.Sequential(
             nn.Linear(input_dim, latent_dim),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
         )
         self.decoder = nn.Sequential(
             nn.Linear(latent_dim, input_dim),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
         )
 
     def forward(self, x):
         """
-        Forward pass through the autoencoder.
+        Parameters
+        ----------
+        x : Tensor, shape (batch, input_dim)
 
-        Args:
-            x (torch.Tensor): Input tensor of shape (batch, input_dim).
-
-        Returns:
-            tuple: (x_hat, z) where
-                - x_hat (torch.Tensor): Reconstructed input, shape (batch, input_dim).
-                - z (torch.Tensor): Latent representation, shape (batch, latent_dim).
+        Returns
+        -------
+        x_hat : Tensor, shape (batch, input_dim)
+            Reconstruction.
+        z : Tensor, shape (batch, latent_dim)
+            Latent representation.
         """
-        # Dropout is applied at the input layer
         x = self.dropout(x)
         z = self.encoder(x)
         x_hat = self.decoder(z)
@@ -69,36 +47,27 @@ class SimpleAutoencoder(nn.Module):
 
 class JAE1(nn.Module):
     """
-    Original Joint Autoencoder (Altan et al., 2021 implementation).
+    Joint Autoencoder from Altan et al. (2021), Fig 2.
 
-    JAE1 splits input channels into two fixed groups (50/50 split) and processes
-    them through two parallel autoencoders. The loss function encourages both
-    accurate reconstruction and alignment of the latent representations.
+    Splits channels into two partitions (X1, X2), processes each through
+    a separate autoencoder, and trains with loss:
 
-    Args:
-        input_dim (int): Total number of input channels. Must be even.
-        latent_dim (int): Dimensionality of the latent space for each autoencoder.
-        dropout_p (float, optional): Dropout probability. Default: 0.05.
+        C = MSE(X1, X̂1) + MSE(X2, X̂2) + ||Z1 - Z2||²
 
-    Attributes:
-        half_dim (int): Half of input_dim (channels per autoencoder).
-        ae1 (SimpleAutoencoder): First autoencoder (processes first half of channels).
-        ae2 (SimpleAutoencoder): Second autoencoder (processes second half of channels).
-
-    Raises:
-        ValueError: If input_dim is not even.
-
-    Example:
-        >>> jae = JAE1(input_dim=96, latent_dim=12)
-        >>> x = torch.randn(16, 96, 128)  # (batch, channels, time)
-        >>> x_denoised, z1, z2, x1_target, x2_target = jae(x)
-        >>> print(x_denoised.shape)  # torch.Size([16, 96, 128])
+    Parameters
+    ----------
+    input_dim : int
+        Total number of channels. Must be even.
+    latent_dim : int
+        Latent space dimensionality (D in paper).
+    dropout_p : float, default=0.05
+        Input dropout probability.
     """
 
     def __init__(self, input_dim, latent_dim, dropout_p=0.05):
-        super(JAE1, self).__init__()
+        super().__init__()
         if input_dim % 2 != 0:
-            raise ValueError("JAE1 requires an even number of input dimensions.")
+            raise ValueError("JAE1 requires even number of input channels.")
 
         self.half_dim = input_dim // 2
         self.ae1 = SimpleAutoencoder(self.half_dim, latent_dim, dropout_p)
@@ -106,41 +75,36 @@ class JAE1(nn.Module):
 
     def forward(self, x):
         """
-        Forward pass through JAE1.
+        Parameters
+        ----------
+        x : Tensor, shape (batch, channels, time)
 
-        Args:
-            x (torch.Tensor): Input tensor of shape (batch, channels, time).
-
-        Returns:
-            tuple: (x_denoised, z1, z2, x1_target, x2_target) where
-                - x_denoised (torch.Tensor): Reconstructed signal, shape (batch, channels, time).
-                - z1 (torch.Tensor): Latent from first AE, shape (batch*time, latent_dim).
-                - z2 (torch.Tensor): Latent from second AE, shape (batch*time, latent_dim).
-                - x1_target (torch.Tensor): First half input, shape (batch, half_dim, time).
-                - x2_target (torch.Tensor): Second half input, shape (batch, half_dim, time).
+        Returns
+        -------
+        x_denoised : Tensor, shape (batch, channels, time)
+        z1 : Tensor, shape (batch*time, latent_dim)
+        z2 : Tensor, shape (batch*time, latent_dim)
+        x1_target : Tensor, shape (batch, half_dim, time)
+        x2_target : Tensor, shape (batch, half_dim, time)
         """
-        # Input shape: (Batch, Channels, Time)
         B, C, T = x.shape
 
-        # Split the channels (dim=1) into two fixed sets
-        x1 = x[:, :self.half_dim, :]
-        x2 = x[:, self.half_dim:, :]
+        # Split channels into two partitions
+        x1 = x[:, : self.half_dim, :]
+        x2 = x[:, self.half_dim :, :]
 
-        # To apply FC layers independently at each time step, we must reshape.
-        # (Batch, Channels, Time) -> (Batch, Time, Channels) -> (Batch*Time, Channels)
+        # Reshape for FC layers: (B, C, T) -> (B*T, C)
         x1_flat = x1.permute(0, 2, 1).reshape(B * T, self.half_dim)
         x2_flat = x2.permute(0, 2, 1).reshape(B * T, self.half_dim)
 
-        # Process through networks
+        # Process through autoencoders
         x1_hat_flat, z1 = self.ae1(x1_flat)
         x2_hat_flat, z2 = self.ae2(x2_flat)
 
-        # Reshape back to (Batch, Time, Channels) -> (Batch, Channels, Time)
+        # Reshape back: (B*T, C) -> (B, C, T)
         x1_hat = x1_hat_flat.reshape(B, T, self.half_dim).permute(0, 2, 1)
         x2_hat = x2_hat_flat.reshape(B, T, self.half_dim).permute(0, 2, 1)
 
         x_denoised = torch.cat((x1_hat, x2_hat), dim=1)
 
-        # Return denoised output, latents (for loss), and targets (for loss)
         return x_denoised, z1, z2, x1, x2
-
