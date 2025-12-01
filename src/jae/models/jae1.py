@@ -4,14 +4,16 @@ Original Joint Autoencoder implementation from Altan et al. (2021).
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class SimpleAutoencoder(nn.Module):
     """
-    Simple fully-connected autoencoder with ReLU activations.
-
-    Architecture per paper: Input -> Linear -> ReLU -> Linear -> ReLU -> Output
-    Dropout applied at input layer (p=0.05 default).
+    Simple fully-connected autoencoder with ReLU.
+    
+    Architecture: Input -> Dropout -> Linear -> ReLU -> Linear -> ReLU -> Output
+    ReLU on output ensures non-negative output (required for firing rates).
+    Positive bias initialization prevents collapse.
     """
 
     def __init__(self, input_dim, latent_dim, dropout_p=0.05):
@@ -21,27 +23,15 @@ class SimpleAutoencoder(nn.Module):
             nn.Linear(input_dim, latent_dim),
             nn.ReLU(inplace=True),
         )
-        self.decoder = nn.Sequential(
-            nn.Linear(latent_dim, input_dim),
-            nn.ReLU(inplace=True),
-        )
+        self.decoder = nn.Linear(latent_dim, input_dim)
+        
+        # Initialize decoder bias positive to prevent ReLU collapse
+        nn.init.constant_(self.decoder.bias, 0.3)
 
     def forward(self, x):
-        """
-        Parameters
-        ----------
-        x : Tensor, shape (batch, input_dim)
-
-        Returns
-        -------
-        x_hat : Tensor, shape (batch, input_dim)
-            Reconstruction.
-        z : Tensor, shape (batch, latent_dim)
-            Latent representation.
-        """
         x = self.dropout(x)
         z = self.encoder(x)
-        x_hat = self.decoder(z)
+        x_hat = F.relu(self.decoder(z))  # ReLU for non-negative output
         return x_hat, z
 
 
@@ -52,7 +42,7 @@ class JAE1(nn.Module):
     Splits channels into two partitions (X1, X2), processes each through
     a separate autoencoder, and trains with loss:
 
-        C = MSE(X1, X̂1) + MSE(X2, X̂2) + ||Z1 - Z2||²
+        C = MSE(X1, X̂1) + MSE(X2, X̂2) + λ * ||Z1 - Z2||²
 
     Parameters
     ----------
@@ -74,19 +64,6 @@ class JAE1(nn.Module):
         self.ae2 = SimpleAutoencoder(self.half_dim, latent_dim, dropout_p)
 
     def forward(self, x):
-        """
-        Parameters
-        ----------
-        x : Tensor, shape (batch, channels, time)
-
-        Returns
-        -------
-        x_denoised : Tensor, shape (batch, channels, time)
-        z1 : Tensor, shape (batch*time, latent_dim)
-        z2 : Tensor, shape (batch*time, latent_dim)
-        x1_target : Tensor, shape (batch, half_dim, time)
-        x2_target : Tensor, shape (batch, half_dim, time)
-        """
         B, C, T = x.shape
 
         # Split channels into two partitions

@@ -133,18 +133,12 @@ def simulate_neural_data(
 
     for i in range(n_samples):
         for d in range(latent_dim):
-            # Sample from exponential-like distribution (mimics firing rate distribution)
-            # Then add temporal structure
-            base_rate = np.random.exponential(scale=10.0)  # Mean firing rate
-            # Add slow temporal modulation
+            # Generate smooth temporal dynamics (mimics neural population activity)
             t = np.linspace(0, 4 * np.pi, n_timepoints)
             freq = np.random.uniform(0.5, 2.0)
             phase = np.random.uniform(0, 2 * np.pi)
-            modulation = 0.5 + 0.5 * np.sin(freq * t + phase)
-            latents[i, d, :] = base_rate * modulation
-
-            # Add Poisson-like variability
-            latents[i, d, :] += np.random.poisson(lam=2.0, size=n_timepoints)
+            # Offset ensures positive values after smoothing
+            latents[i, d, :] = np.sin(freq * t + phase) + 1.5
 
     # Step 2: Smooth with Gaussian kernel
     if smoothing_sigma > 0:
@@ -162,14 +156,14 @@ def simulate_neural_data(
     X_flat = latents_flat @ W.T
     X = X_flat.reshape(n_samples, n_timepoints, n_channels).transpose(0, 2, 1)
 
-    # Step 4: Scale each channel to [0, 1]
-    for ch in range(n_channels):
-        ch_min = X[:, ch, :].min()
-        ch_max = X[:, ch, :].max()
-        if ch_max > ch_min:
-            X[:, ch, :] = (X[:, ch, :] - ch_min) / (ch_max - ch_min)
-        else:
-            X[:, ch, :] = 0.5
+    # Step 4: Global normalization to [0, 1]
+    # Note: Global normalization preserves shared dynamics across channels,
+    # which is essential for JAE to leverage the split-channel structure.
+    X_min, X_max = X.min(), X.max()
+    if X_max > X_min:
+        X = (X - X_min) / (X_max - X_min)
+    else:
+        X = np.full_like(X, 0.5)
 
     # Step 5: Nonlinear embedding (Eq 1 from paper)
     if nonlinear and alpha > 0:

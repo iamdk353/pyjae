@@ -17,55 +17,51 @@ pip install -e .
 ## Quick Start
 
 ```python
-from jae import JAE, simulate_neural_data
+from jae import JAE, simulate_neural_data, calculate_vaf, run_pca_baseline
 
-# Generate synthetic neural data with known ground truth
+# Generate synthetic neural data
 clean, noisy, info = simulate_neural_data(
-    n_samples=500,
+    n_samples=300,
     n_channels=96,
     latent_dim=6,
     snr_db=5.0,
     nonlinear=True
 )
 
-# Create and train the denoiser
-model = JAE(latent_dim=6)
-model.fit(noisy, epochs=100)
+# Train JAE
+model = JAE(latent_dim=8)
+model.fit(noisy.numpy(), epochs=300)
 
 # Denoise and evaluate
-denoised = model.denoise(noisy)
-vaf = model.score(clean, denoised)  # Variance Accounted For (R²)
-print(f"VAF: {vaf:.3f}")
+denoised = model.denoise(noisy.numpy())
+
+# Compare to PCA baseline
+pca_denoised = run_pca_baseline(noisy, latent_dim=8)
+
+vaf_pca = calculate_vaf(clean, pca_denoised)
+vaf_jae = calculate_vaf(clean, denoised)
+
+print(f"PCA VAF: {vaf_pca:.3f}")
+print(f"JAE VAF: {vaf_jae:.3f}")
 ```
 
 ## How It Works
 
-JAE splits neural recordings into two random partitions and trains parallel autoencoders. The key insight is that both partitions share the same underlying low-dimensional signal, but have independent noise. By forcing the latent representations to agree, JAE learns to extract signal and reject noise.
+JAE splits neural recordings into two random partitions and trains parallel autoencoders. Both partitions share the same underlying signal but have independent noise. By forcing the latent representations to match, JAE learns to extract signal and reject noise.
 
-The loss function (Eq 3 from the paper):
+Loss function (Eq 3 from paper):
 ```
-C = MSE(X1, X̂1) + MSE(X2, X̂2) + ||Z1 - Z2||²
+C = MSE(X1, X̂1) + MSE(X2, X̂2) + λ||Z1 - Z2||²
 ```
 
 ## Configuration
 
 ```python
 model = JAE(
-    latent_dim=6,        # Latent space dimensionality (D in paper)
+    latent_dim=8,        # Latent space dimensionality
     dropout_p=0.05,      # Input dropout (paper default)
-    learning_rate=0.001, # ADAM learning rate (paper default)
-    use_gpu=True         # Auto-detects CUDA availability
-)
-```
-
-Optional enhancements beyond the original paper:
-```python
-model = JAE(
-    latent_dim=6,
-    use_unet=True,           # Use U-Net architecture instead of FC
-    use_vicreg=True,         # Use VICReg loss for latent alignment
-    num_networks=5,          # N-way parallel networks (default: 2)
-    subsample_fraction=0.8   # Fraction of channels per network
+    learning_rate=0.001, # ADAM learning rate
+    use_gpu=True         # Auto-detects CUDA
 )
 ```
 
@@ -75,6 +71,7 @@ model = JAE(
 - PyTorch ≥ 2.0.0
 - NumPy ≥ 1.21.0
 - scikit-learn ≥ 1.0.0
+- scipy
 
 ## Citation
 

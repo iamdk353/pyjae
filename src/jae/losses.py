@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 
 
-def jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_target, x2_target, latent_weight=1.0):
+def jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_target, x2_target, latent_weight=2.0):
     """
     Original JAE loss function from Altan et al. (2021), Eq 3.
 
