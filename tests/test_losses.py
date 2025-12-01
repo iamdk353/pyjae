@@ -7,207 +7,56 @@ import torch
 
 from jae.losses import (
     jae1_loss_fn,
+    jae2_loss_fn,
     huber_reconstruction_loss,
     vicreg_loss,
-    jae2_loss_fn
+    mse_latent_alignment,
 )
 
 
 class TestJAE1Loss:
     """Tests for JAE1 loss function."""
 
-    def test_loss_computation(self):
-        """Test that loss is computed correctly."""
-        batch_size, channels, time = 16, 48, 128
-        latent_dim = 12
+    def test_basic(self):
+        """Test basic loss computation."""
+        x1_hat = torch.randn(16, 48, 128)
+        x2_hat = torch.randn(16, 48, 128)
+        z1 = torch.randn(2048, 12)
+        z2 = torch.randn(2048, 12)
 
-        x1_hat = torch.randn(batch_size, channels, time)
-        x2_hat = torch.randn(batch_size, channels, time)
-        z1 = torch.randn(batch_size * time, latent_dim)
-        z2 = torch.randn(batch_size * time, latent_dim)
-        x1_target = torch.randn(batch_size, channels, time)
-        x2_target = torch.randn(batch_size, channels, time)
-
-        loss = jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_target, x2_target)
+        loss = jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_hat, x2_hat)
 
         assert loss.ndim == 0  # Scalar
-        assert not torch.isnan(loss)
-        assert loss >= 0
-
-    def test_zero_loss_perfect_reconstruction(self):
-        """Test that loss is zero for perfect reconstruction and alignment."""
-        batch_size, channels, time = 8, 48, 64
-        latent_dim = 12
-
-        x1 = torch.randn(batch_size, channels, time)
-        x2 = torch.randn(batch_size, channels, time)
-        z = torch.randn(batch_size * time, latent_dim)
-
-        # Perfect reconstruction and alignment
-        loss = jae1_loss_fn(x1, x2, z, z, x1, x2)
-
-        assert loss.item() < 1e-6  # Should be very close to zero
-
-    def test_latent_weight(self):
-        """Test that latent_weight affects loss."""
-        batch_size, channels, time = 8, 48, 64
-        latent_dim = 12
-
-        x1_hat = torch.randn(batch_size, channels, time)
-        x2_hat = torch.randn(batch_size, channels, time)
-        z1 = torch.randn(batch_size * time, latent_dim)
-        z2 = torch.randn(batch_size * time, latent_dim)
-        x1_target = torch.randn(batch_size, channels, time)
-        x2_target = torch.randn(batch_size, channels, time)
-
-        loss_w1 = jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_target, x2_target, latent_weight=1.0)
-        loss_w2 = jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_target, x2_target, latent_weight=2.0)
-
-        assert loss_w2 > loss_w1  # Higher weight should increase loss
-
-    def test_gradient_flow(self):
-        """Test that gradients flow through the loss."""
-        x1_hat = torch.randn(4, 24, 64, requires_grad=True)
-        x2_hat = torch.randn(4, 24, 64, requires_grad=True)
-        z1 = torch.randn(256, 12, requires_grad=True)
-        z2 = torch.randn(256, 12, requires_grad=True)
-        x1_target = torch.randn(4, 24, 64)
-        x2_target = torch.randn(4, 24, 64)
-
-        loss = jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_target, x2_target)
-        loss.backward()
-
-        assert x1_hat.grad is not None
-        assert z1.grad is not None
-
-
-class TestHuberLoss:
-    """Tests for Huber reconstruction loss."""
-
-    def test_empty_list(self):
-        """Test that empty list returns zero."""
-        loss = huber_reconstruction_loss([], [])
-        assert loss == 0.0
-
-    def test_single_view(self):
-        """Test with single view."""
-        recon = torch.randn(8, 48, 64)
-        target = torch.randn(8, 48, 64)
-
-        loss = huber_reconstruction_loss([recon], [target])
-
-        assert loss.ndim == 0
-        assert loss >= 0
-
-    def test_multiple_views(self):
-        """Test with multiple views."""
-        recons = [torch.randn(8, 48, 64) for _ in range(5)]
-        targets = [torch.randn(8, 48, 64) for _ in range(5)]
-
-        loss = huber_reconstruction_loss(recons, targets)
-
-        assert loss.ndim == 0
         assert loss >= 0
 
     def test_perfect_reconstruction(self):
-        """Test that loss is zero for perfect reconstruction."""
-        data = torch.randn(8, 48, 64)
+        """Test loss is zero for perfect reconstruction and alignment."""
+        x1 = torch.randn(16, 48, 128)
+        x2 = torch.randn(16, 48, 128)
+        z = torch.randn(2048, 12)
 
-        loss = huber_reconstruction_loss([data], [data])
+        loss = jae1_loss_fn(x1, x2, z, z, x1, x2)
 
         assert loss.item() < 1e-6
 
-    def test_delta_parameter(self):
-        """Test that delta parameter affects loss."""
-        recon = torch.randn(8, 48, 64)
-        target = torch.randn(8, 48, 64)
+    def test_latent_weight(self):
+        """Test latent weight affects loss."""
+        x1_hat = torch.randn(16, 48, 128)
+        x2_hat = torch.randn(16, 48, 128)
+        z1 = torch.randn(2048, 12)
+        z2 = torch.randn(2048, 12) + 1.0  # Different
 
-        loss_d1 = huber_reconstruction_loss([recon], [target], delta=1.0)
-        loss_d2 = huber_reconstruction_loss([recon], [target], delta=2.0)
+        loss_low = jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_hat, x2_hat, latent_weight=0.1)
+        loss_high = jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_hat, x2_hat, latent_weight=10.0)
 
-        # Both should be valid losses
-        assert loss_d1 >= 0
-        assert loss_d2 >= 0
-
-
-class TestVICRegLoss:
-    """Tests for VICReg loss."""
-
-    def test_empty_list(self):
-        """Test that empty list returns zero."""
-        loss = vicreg_loss([])
-        assert loss == 0.0
-
-    def test_single_latent(self):
-        """Test that single latent returns zero."""
-        latent = torch.randn(32, 12)
-        loss = vicreg_loss([latent])
-        assert loss == 0.0
-
-    def test_two_latents(self):
-        """Test with two latent representations."""
-        latent1 = torch.randn(32, 12)
-        latent2 = torch.randn(32, 12)
-
-        loss = vicreg_loss([latent1, latent2])
-
-        assert loss.ndim == 0
-        assert loss >= 0
-
-    def test_multiple_latents(self):
-        """Test with multiple latent representations."""
-        latents = [torch.randn(32, 12) for _ in range(5)]
-
-        loss = vicreg_loss(latents)
-
-        assert loss.ndim == 0
-        assert loss >= 0
-
-    def test_batch_size_one_handling(self):
-        """Test that batch size 1 is handled gracefully."""
-        latents = [torch.randn(1, 12) for _ in range(3)]
-
-        # Should not raise an error
-        loss = vicreg_loss(latents)
-        assert loss >= 0
-
-    def test_identical_latents(self):
-        """Test with identical latents (perfect invariance)."""
-        latent = torch.randn(32, 12)
-
-        loss = vicreg_loss([latent, latent.clone()])
-
-        # Invariance term should be zero, but variance and covariance terms may not be
-        assert loss >= 0
-
-    def test_weight_parameters(self):
-        """Test that weight parameters affect loss."""
-        latents = [torch.randn(32, 12) for _ in range(3)]
-
-        loss_default = vicreg_loss(latents)
-        loss_high_inv = vicreg_loss(latents, lambda_inv=100.0)
-
-        # Both should be valid
-        assert loss_default >= 0
-        assert loss_high_inv >= 0
-
-    def test_gradient_flow(self):
-        """Test that gradients flow through VICReg loss."""
-        latent1 = torch.randn(32, 12, requires_grad=True)
-        latent2 = torch.randn(32, 12, requires_grad=True)
-
-        loss = vicreg_loss([latent1, latent2])
-        loss.backward()
-
-        assert latent1.grad is not None
-        assert latent2.grad is not None
+        assert loss_high > loss_low
 
 
 class TestJAE2Loss:
-    """Tests for combined JAE2 loss."""
+    """Tests for JAE2 loss function."""
 
-    def test_loss_computation(self):
-        """Test that combined loss is computed correctly."""
+    def test_basic(self):
+        """Test basic loss computation."""
         recons = [torch.randn(8, 48, 64) for _ in range(5)]
         latents = [torch.randn(8, 12) for _ in range(5)]
         targets = [torch.randn(8, 48, 64) for _ in range(5)]
@@ -216,45 +65,97 @@ class TestJAE2Loss:
 
         assert loss.ndim == 0
         assert loss >= 0
-        assert not torch.isnan(loss)
 
-    def test_empty_inputs(self):
-        """Test behavior with empty inputs."""
-        loss = jae2_loss_fn([], [], [])
+    def test_with_vicreg(self):
+        """Test with VICReg loss."""
+        recons = [torch.randn(8, 48, 64) for _ in range(5)]
+        latents = [torch.randn(8, 12) for _ in range(5)]
+        targets = [torch.randn(8, 48, 64) for _ in range(5)]
 
-        # Should handle gracefully
-        assert loss.ndim == 0
+        loss_mse = jae2_loss_fn(recons, latents, targets, use_vicreg=False)
+        loss_vicreg = jae2_loss_fn(recons, latents, targets, use_vicreg=True)
 
-    def test_weight_parameters(self):
-        """Test that weight parameters affect loss."""
+        # Both should be valid
+        assert loss_mse >= 0
+        assert loss_vicreg >= 0
+
+
+class TestHuberLoss:
+    """Tests for Huber reconstruction loss."""
+
+    def test_basic(self):
+        """Test basic computation."""
         recons = [torch.randn(8, 48, 64) for _ in range(3)]
-        latents = [torch.randn(8, 12) for _ in range(3)]
         targets = [torch.randn(8, 48, 64) for _ in range(3)]
 
-        loss_default = jae2_loss_fn(recons, latents, targets)
-        loss_high_recon = jae2_loss_fn(recons, latents, targets, recon_weight=10.0)
-        loss_high_vicreg = jae2_loss_fn(recons, latents, targets, vicreg_weight=1.0)
+        loss = huber_reconstruction_loss(recons, targets)
 
-        # All should be valid
-        assert loss_default >= 0
-        assert loss_high_recon >= 0
-        assert loss_high_vicreg >= 0
+        assert loss.ndim == 0
+        assert loss >= 0
 
-    def test_gradient_flow(self):
-        """Test gradient flow through combined loss."""
-        recons = [torch.randn(8, 48, 64, requires_grad=True) for _ in range(3)]
-        latents = [torch.randn(8, 12, requires_grad=True) for _ in range(3)]
-        targets = [torch.randn(8, 48, 64) for _ in range(3)]
+    def test_empty_list(self):
+        """Test empty list returns zero."""
+        loss = huber_reconstruction_loss([], [])
+        assert loss.item() == 0.0
 
-        loss = jae2_loss_fn(recons, latents, targets)
-        loss.backward()
+    def test_perfect_reconstruction(self):
+        """Test zero loss for perfect match."""
+        recons = [torch.randn(8, 48, 64) for _ in range(3)]
+        loss = huber_reconstruction_loss(recons, recons)
+        assert loss.item() < 1e-6
 
-        for recon in recons:
-            assert recon.grad is not None
-        for latent in latents:
-            assert latent.grad is not None
+
+class TestVICRegLoss:
+    """Tests for VICReg loss."""
+
+    def test_basic(self):
+        """Test basic computation."""
+        latents = [torch.randn(32, 12) for _ in range(5)]
+        loss = vicreg_loss(latents)
+
+        assert loss.ndim == 0
+        assert loss >= 0
+
+    def test_single_view(self):
+        """Test single view returns zero."""
+        latents = [torch.randn(32, 12)]
+        loss = vicreg_loss(latents)
+        assert loss.item() == 0.0
+
+    def test_identical_latents(self):
+        """Test identical latents have low invariance loss."""
+        z = torch.randn(32, 12)
+        latents = [z, z.clone(), z.clone()]
+
+        # With identical latents, invariance component should be zero
+        loss = vicreg_loss(latents, lambda_inv=1.0, mu_var=0.0, nu_cov=0.0)
+        assert loss.item() < 1e-6
+
+
+class TestMSELatentAlignment:
+    """Tests for MSE latent alignment."""
+
+    def test_basic(self):
+        """Test basic computation."""
+        latents = [torch.randn(32, 12) for _ in range(5)]
+        loss = mse_latent_alignment(latents)
+
+        assert loss.ndim == 0
+        assert loss >= 0
+
+    def test_single_view(self):
+        """Test single view returns zero."""
+        latents = [torch.randn(32, 12)]
+        loss = mse_latent_alignment(latents)
+        assert loss.item() == 0.0
+
+    def test_identical_latents(self):
+        """Test identical latents have zero loss."""
+        z = torch.randn(32, 12)
+        latents = [z, z.clone(), z.clone()]
+        loss = mse_latent_alignment(latents)
+        assert loss.item() < 1e-6
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

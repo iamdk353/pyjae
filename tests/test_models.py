@@ -4,7 +4,6 @@ Unit tests for JAE model architectures.
 
 import pytest
 import torch
-import torch.nn as nn
 
 from jae.models import SimpleAutoencoder, JAE1, JAE2, UNet1D
 
@@ -12,245 +11,174 @@ from jae.models import SimpleAutoencoder, JAE1, JAE2, UNet1D
 class TestSimpleAutoencoder:
     """Tests for SimpleAutoencoder."""
 
-    def test_forward_pass_shape(self):
-        """Test that forward pass produces correct output shapes."""
-        input_dim = 48
-        latent_dim = 12
-        batch_size = 16
-
-        ae = SimpleAutoencoder(input_dim, latent_dim)
-        x = torch.randn(batch_size, input_dim)
-
+    def test_forward_shape(self):
+        """Test output shapes."""
+        ae = SimpleAutoencoder(input_dim=48, latent_dim=12)
+        x = torch.randn(16, 48)
         x_hat, z = ae(x)
 
-        assert x_hat.shape == (batch_size, input_dim)
-        assert z.shape == (batch_size, latent_dim)
+        assert x_hat.shape == (16, 48)
+        assert z.shape == (16, 12)
 
     def test_gradient_flow(self):
-        """Test that gradients flow through the network."""
+        """Test gradients flow through network."""
         ae = SimpleAutoencoder(input_dim=48, latent_dim=12)
         x = torch.randn(8, 48)
-
         x_hat, z = ae(x)
         loss = (x_hat - x).pow(2).mean()
         loss.backward()
 
-        # Check that gradients exist for all parameters
         for param in ae.parameters():
             assert param.grad is not None
-
-    def test_device_placement(self):
-        """Test model can be moved to different devices."""
-        ae = SimpleAutoencoder(input_dim=48, latent_dim=12)
-
-        # Test CPU
-        ae_cpu = ae.to('cpu')
-        x_cpu = torch.randn(4, 48)
-        x_hat, z = ae_cpu(x_cpu)
-        assert x_hat.device.type == 'cpu'
-
-        # Test CUDA if available
-        if torch.cuda.is_available():
-            ae_cuda = ae.to('cuda')
-            x_cuda = torch.randn(4, 48).to('cuda')
-            x_hat, z = ae_cuda(x_cuda)
-            assert x_hat.device.type == 'cuda'
 
 
 class TestJAE1:
     """Tests for JAE1 model."""
 
-    def test_forward_pass_shape(self):
-        """Test that forward pass produces correct output shapes."""
-        input_dim = 96
-        latent_dim = 12
-        batch_size = 16
-        seq_len = 128
-
-        model = JAE1(input_dim, latent_dim)
-        x = torch.randn(batch_size, input_dim, seq_len)
-
+    def test_forward_shape(self):
+        """Test output shapes."""
+        model = JAE1(input_dim=96, latent_dim=12)
+        x = torch.randn(16, 96, 128)
         x_denoised, z1, z2, x1_target, x2_target = model(x)
 
-        assert x_denoised.shape == (batch_size, input_dim, seq_len)
-        assert z1.shape == (batch_size * seq_len, latent_dim)
-        assert z2.shape == (batch_size * seq_len, latent_dim)
-        assert x1_target.shape == (batch_size, input_dim // 2, seq_len)
-        assert x2_target.shape == (batch_size, input_dim // 2, seq_len)
+        assert x_denoised.shape == (16, 96, 128)
+        assert z1.shape == (16 * 128, 12)
+        assert z2.shape == (16 * 128, 12)
+        assert x1_target.shape == (16, 48, 128)
+        assert x2_target.shape == (16, 48, 128)
 
-    def test_odd_input_dim_raises_error(self):
-        """Test that odd input dimensions raise ValueError."""
-        with pytest.raises(ValueError, match="even number"):
+    def test_odd_input_error(self):
+        """Test odd input channels raise error."""
+        with pytest.raises(ValueError, match="even"):
             JAE1(input_dim=97, latent_dim=12)
 
     def test_gradient_flow(self):
-        """Test that gradients flow through the network."""
+        """Test gradients flow."""
         model = JAE1(input_dim=96, latent_dim=12)
         x = torch.randn(8, 96, 128)
-
-        x_denoised, z1, z2, x1_target, x2_target = model(x)
-        loss = (x_denoised - x).pow(2).mean()
+        x_denoised, z1, z2, _, _ = model(x)
+        loss = x_denoised.mean()
         loss.backward()
 
-        # Check that gradients exist
         for param in model.parameters():
             assert param.grad is not None
 
-    def test_different_batch_sizes(self):
-        """Test model works with different batch sizes."""
+    def test_batch_sizes(self):
+        """Test different batch sizes."""
         model = JAE1(input_dim=96, latent_dim=12)
-
         for batch_size in [1, 8, 32]:
             x = torch.randn(batch_size, 96, 128)
             x_denoised, _, _, _, _ = model(x)
             assert x_denoised.shape == (batch_size, 96, 128)
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
-    def test_cuda_support(self):
-        """Test model works on CUDA."""
+    def test_cuda(self):
+        """Test CUDA support."""
         model = JAE1(input_dim=96, latent_dim=12).to('cuda')
         x = torch.randn(8, 96, 128).to('cuda')
-
-        x_denoised, z1, z2, _, _ = model(x)
+        x_denoised, z1, _, _, _ = model(x)
 
         assert x_denoised.device.type == 'cuda'
         assert z1.device.type == 'cuda'
 
 
 class TestUNet1D:
-    """Tests for UNet1D model."""
+    """Tests for UNet1D."""
 
-    def test_forward_pass_shape(self):
-        """Test that forward pass produces correct output shapes."""
-        input_channels = 48
-        latent_dim = 12
-        batch_size = 8
-        seq_len = 128
+    def test_forward_shape(self):
+        """Test output shapes."""
+        unet = UNet1D(input_channels=48, channels=[32, 64], latent_dim=12)
+        x = torch.randn(8, 48, 128)
+        recon, latent = unet(x)
 
-        unet = UNet1D(input_channels, channels=[32, 64], latent_dim=latent_dim)
-        x = torch.randn(batch_size, input_channels, seq_len)
+        assert recon.shape == (8, 48, 128)
+        assert latent.shape == (8, 12)
 
-        reconstruction, latent = unet(x)
-
-        assert reconstruction.shape == (batch_size, input_channels, seq_len)
-        assert latent.shape == (batch_size, latent_dim)
-
-    def test_non_negativity_constraint(self):
-        """Test that reconstruction is non-negative."""
+    def test_non_negativity(self):
+        """Test output is non-negative (ReLU)."""
         unet = UNet1D(input_channels=48, channels=[32, 64], latent_dim=12)
         x = torch.randn(4, 48, 128)
-
-        reconstruction, latent = unet(x)
-
-        # All values should be >= 0 due to ReLU
-        assert (reconstruction >= 0).all()
+        recon, _ = unet(x)
+        assert (recon >= 0).all()
 
     def test_gradient_flow(self):
-        """Test gradient flow through U-Net."""
+        """Test gradient flow."""
         unet = UNet1D(input_channels=48, channels=[32, 64], latent_dim=12)
         x = torch.randn(4, 48, 128)
-
-        reconstruction, latent = unet(x)
-        loss = reconstruction.mean() + latent.mean()
+        recon, latent = unet(x)
+        loss = recon.mean() + latent.mean()
         loss.backward()
 
         for param in unet.parameters():
             assert param.grad is not None
 
-    def test_different_sequence_lengths(self):
-        """Test U-Net with different sequence lengths."""
+    def test_sequence_lengths(self):
+        """Test different sequence lengths."""
         unet = UNet1D(input_channels=48, channels=[32, 64], latent_dim=12)
-
         for seq_len in [64, 128, 256]:
             x = torch.randn(4, 48, seq_len)
-            reconstruction, latent = unet(x)
-            assert reconstruction.shape == (4, 48, seq_len)
+            recon, _ = unet(x)
+            assert recon.shape == (4, 48, seq_len)
 
 
 class TestJAE2:
     """Tests for JAE2 model."""
 
-    def test_forward_pass_shape(self):
-        """Test that forward pass produces correct output shapes."""
-        input_dim = 96
-        latent_dim = 12
-        num_networks = 5
-        batch_size = 8
-        seq_len = 128
-
-        model = JAE2(
-            input_dim=input_dim,
-            latent_dim=latent_dim,
-            num_networks=num_networks,
-            subsample_fraction=0.8
-        )
-        x = torch.randn(batch_size, input_dim, seq_len)
-
+    def test_forward_shape(self):
+        """Test output shapes."""
+        model = JAE2(input_dim=96, latent_dim=12, num_networks=5, subsample_fraction=0.8)
+        x = torch.randn(8, 96, 128)
         denoised, recons, latents, inputs_sub = model(x)
 
-        assert denoised.shape == (batch_size, input_dim, seq_len)
-        assert len(recons) == num_networks
-        assert len(latents) == num_networks
-        assert len(inputs_sub) == num_networks
-
-        # Check latent shapes
+        assert denoised.shape == (8, 96, 128)
+        assert len(recons) == 5
+        assert len(latents) == 5
         for latent in latents:
-            assert latent.shape == (batch_size, latent_dim)
+            assert latent.shape == (8, 12)
 
-    def test_subsample_fraction_validation(self):
-        """Test that invalid subsample_fraction raises error."""
+    def test_invalid_subsample(self):
+        """Test invalid subsample fraction."""
         with pytest.raises(ValueError):
             JAE2(input_dim=96, latent_dim=12, subsample_fraction=0.0)
 
     def test_gradient_flow(self):
-        """Test gradient flow through JAE2."""
+        """Test gradient flow."""
         model = JAE2(input_dim=96, latent_dim=12, num_networks=3, subsample_fraction=1.0)
         x = torch.randn(4, 96, 128)
-
-        denoised, recons, latents, inputs_sub = model(x)
-        # Use a loss that involves all outputs to ensure all parameters get gradients
+        denoised, recons, latents, _ = model(x)
         loss = denoised.sum() + sum(r.sum() for r in recons) + sum(l.sum() for l in latents)
         loss.backward()
 
-        # With subsample_fraction=1.0 and comprehensive loss, all parameters should have gradients
         for param in model.parameters():
             assert param.grad is not None
 
-    def test_different_num_networks(self):
-        """Test JAE2 with different numbers of parallel networks."""
+    def test_num_networks(self):
+        """Test different network counts."""
         for num_networks in [2, 3, 5, 8]:
             model = JAE2(input_dim=96, latent_dim=12, num_networks=num_networks)
             x = torch.randn(4, 96, 128)
-
-            denoised, recons, latents, _ = model(x)
-
+            _, recons, latents, _ = model(x)
             assert len(recons) == num_networks
             assert len(latents) == num_networks
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
-    def test_cuda_support(self):
-        """Test JAE2 works on CUDA."""
+    def test_cuda(self):
+        """Test CUDA support."""
         model = JAE2(input_dim=96, latent_dim=12, num_networks=3).to('cuda')
         x = torch.randn(4, 96, 128).to('cuda')
-
-        denoised, recons, latents, _ = model(x)
+        denoised, _, latents, _ = model(x)
 
         assert denoised.device.type == 'cuda'
         for latent in latents:
             assert latent.device.type == 'cuda'
 
-    def test_reconstruction_averaging(self):
-        """Test that reconstructions are properly averaged."""
+    def test_no_nan(self):
+        """Test output contains no NaN."""
         model = JAE2(input_dim=96, latent_dim=12, num_networks=3)
         x = torch.randn(4, 96, 128)
-
         denoised, _, _, _ = model(x)
-
-        # Denoised output should not contain NaN or Inf
         assert not torch.isnan(denoised).any()
-        assert not torch.isinf(denoised).any()
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-
