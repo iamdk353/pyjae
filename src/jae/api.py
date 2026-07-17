@@ -1,176 +1,173 @@
-"""
-High-level API for the Joint Autoencoder (JAE).
+"""High-level API for the Joint Autoencoder (JAE).
 
-Provides a scikit-learn-style interface for neural signal denoising.
+Provides a scikit-learn-style facade over the two model backends:
+
+- ``backend="jae1"`` (default): the modular channel-split Joint Autoencoder
+  (a corrected reimplementation of Altan et al. 2021). Denoises by forcing two
+  disjoint channel partitions to share a latent, rejecting independent noise.
+- ``backend="jepa"``: the JEPA-style joint-embedding predictive model, which
+  learns the underlying manifold by predicting masked-region embeddings in
+  latent space and denoises through a lightweight decoder head.
+
+Both backends expose ``forward`` / ``loss`` / ``denoise``, so the training loop
+here is backend-agnostic.
 """
 
-import numpy as np
 import torch
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 
-from .models import JAE1, JAE2
-from .losses import jae1_loss_fn, jae2_loss_fn
-from .utils import get_device, validate_input_data
+from jae.metrics import per_channel_vaf, vaf
+from jae.models import JAE1, JAE2
+from jae.utils import get_device, validate_input_data
+
+_BACKENDS = ("jae1", "jepa")
 
 
 class JAE:
-    """
-    Joint Autoencoder for neural signal denoising.
-
-    By default, implements the original algorithm from Altan et al. (2021):
-    - 50/50 random partition of channels
-    - Two parallel fully-connected autoencoders with ReLU activations
-    - Loss: MSE(reconstruction) + MSE(latent alignment)
-
-    Optional enhancements can be enabled via parameters.
+    """Joint Autoencoder for neural signal denoising and manifold learning.
 
     Parameters
     ----------
     latent_dim : int, optional
-        Dimensionality of the latent space. If None, auto-detected as
-        input_channels // 8.
-    dropout_p : float, default=0.05
-        Dropout probability at input layer (paper default).
-    learning_rate : float, default=0.001
-        Learning rate for ADAM optimizer (paper default).
+        Latent dimensionality. For ``backend="jae1"`` this is the shared
+        bottleneck of every channel partition; if None it is auto-detected as
+        ``max(input_channels // 8, 4)``. For ``backend="jepa"`` it is the
+        VICReg projector dimension (default 64 if None).
+    backend : {"jae1", "jepa"}, default="jae1"
+        Which model to use.
+    learning_rate : float, default=1e-3
+        AdamW learning rate.
     weight_decay : float, default=1e-5
-        L2 regularization weight.
-    use_unet : bool, default=False
-        Use 1D U-Net architecture instead of fully-connected layers.
-    use_vicreg : bool, default=False
-        Use VICReg loss instead of MSE for latent alignment.
-    num_networks : int, default=2
-        Number of parallel networks. Original paper uses 2.
-    subsample_fraction : float, default=0.5
-        Fraction of channels per network. Original paper uses 0.5 (50/50 split).
-    unet_channels : list, optional
-        Channel dimensions for U-Net encoder levels. Default: [32, 64].
+        AdamW weight decay.
+    standardize : bool, default=True
+        Per-channel z-score the input using statistics fit on the training data
+        only, and invert on the denoised output. Strongly recommended: it gives
+        the reconstruction loss a well-scaled gradient and avoids the
+        near-constant-output local minimum on small-scale signals.
+    seed : int, default=0
+        Seed for the model's channel split (jae1) or mask generator (jepa).
     use_gpu : bool, default=True
-        Use GPU if available.
+        Use CUDA/MPS if available.
     device : str, optional
-        Specific device (e.g., 'cuda:0', 'cpu').
+        Explicit device override (e.g. "cpu", "cuda:0").
     verbose : bool, default=True
-        Print training progress.
+        Print progress.
+    **backend_kwargs
+        Extra keyword arguments forwarded to the underlying model constructor
+        (e.g. ``split``, ``hidden``, ``dropout_p`` for jae1; ``patch_len``,
+        ``d_model``, ``predictor_dim``, ``mask`` for jepa).
 
     Examples
     --------
-    Basic usage (original paper implementation):
-
     >>> model = JAE(latent_dim=6)
-    >>> model.fit(noisy_data, epochs=100)
-    >>> denoised = model.denoise(noisy_data)
-
-    With enhancements:
-
-    >>> model = JAE(latent_dim=6, use_unet=True, use_vicreg=True, num_networks=5)
+    >>> model.fit(noisy, epochs=200)
+    >>> denoised = model.denoise(noisy)
     """
 
     def __init__(
         self,
-        latent_dim=None,
-        dropout_p=0.05,
-        learning_rate=0.001,
-        weight_decay=1e-5,
-        use_unet=False,
-        use_vicreg=False,
-        num_networks=2,
-        subsample_fraction=0.5,
-        unet_channels=None,
-        use_gpu=True,
-        device=None,
-        verbose=True,
-    ):
+        latent_dim: int | None = None,
+        backend: str = "jae1",
+        learning_rate: float = 1e-3,
+        weight_decay: float = 1e-5,
+        standardize: bool = True,
+        seed: int = 0,
+        use_gpu: bool = True,
+        device: str | None = None,
+        verbose: bool = True,
+        **backend_kwargs,
+    ) -> None:
+        if backend not in _BACKENDS:
+            raise ValueError(f"backend must be one of {_BACKENDS}, got {backend!r}.")
+
         self.latent_dim = latent_dim
-        self.dropout_p = dropout_p
+        self.backend = backend
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
-        self.use_unet = use_unet
-        self.use_vicreg = use_vicreg
-        self.num_networks = num_networks
-        self.subsample_fraction = subsample_fraction
-        self.unet_channels = unet_channels or [32, 64]
+        self.standardize = standardize
+        self.seed = seed
         self.verbose = verbose
+        self.backend_kwargs = dict(backend_kwargs)
 
         self.is_fitted = False
         self.input_channels_ = None
+        self.n_timepoints_ = None
         self.model = None
         self.optimizer = None
         self.training_history_ = None
+        self._loss_kwargs: dict = {}
+        # Per-channel standardization stats, fit on the training data only.
+        self.mean_ = None
+        self.std_ = None
 
-        # Device setup
         if device is not None:
             self.device = torch.device(device)
         else:
             self.device = get_device(use_gpu=use_gpu, verbose=verbose)
 
-    def _use_enhanced_model(self):
-        """Check if we should use the enhanced (JAE2-style) model."""
-        return self.use_unet or self.use_vicreg or self.num_networks > 2
-
-    def _initialize_model(self, input_channels):
-        """Initialize the model architecture."""
+    def _initialize_model(self, input_channels: int, n_timepoints: int) -> None:
+        """Build the underlying model once the data shape is known."""
         self.input_channels_ = input_channels
+        self.n_timepoints_ = n_timepoints
 
-        # Auto-detect latent_dim if not specified
         if self.latent_dim is None:
-            self.latent_dim = max(input_channels // 8, 4)
+            self.latent_dim = 64 if self.backend == "jepa" else max(input_channels // 8, 4)
             if self.verbose:
                 print(f"Auto-detected latent_dim={self.latent_dim}")
 
-        # Validate parameters
         if input_channels < 2:
-            raise ValueError(f"input_channels must be >= 2, got {input_channels}")
+            raise ValueError(f"input_channels must be >= 2, got {input_channels}.")
 
-        if not self._use_enhanced_model() and input_channels % 2 != 0:
-            raise ValueError(
-                f"Original JAE requires even number of channels for 50/50 split. "
-                f"Got {input_channels}. Use num_networks > 2 or enable enhancements."
-            )
-
-        # Create model
-        if self._use_enhanced_model():
-            self.model = JAE2(
-                input_dim=input_channels,
-                latent_dim=self.latent_dim,
-                num_networks=self.num_networks,
-                subsample_fraction=self.subsample_fraction,
-                unet_channels=self.unet_channels,
-            )
-        else:
+        if self.backend == "jae1":
+            self._loss_kwargs = {
+                k: self.backend_kwargs.pop(k)
+                for k in ("latent_weight",)
+                if k in self.backend_kwargs
+            }
             self.model = JAE1(
                 input_dim=input_channels,
                 latent_dim=self.latent_dim,
-                dropout_p=self.dropout_p,
+                seed=self.seed,
+                **self.backend_kwargs,
+            )
+        else:
+            jepa_loss_keys = ("lambda_pred", "lambda_var", "lambda_cov", "recon_weight")
+            self._loss_kwargs = {
+                k: self.backend_kwargs.pop(k) for k in jepa_loss_keys if k in self.backend_kwargs
+            }
+            self.model = JAE2(
+                input_dim=input_channels,
+                n_timepoints=n_timepoints,
+                latent_dim=self.latent_dim,
+                seed=self.seed,
+                **self.backend_kwargs,
             )
 
         self.model = self.model.to(self.device)
 
         if self.verbose:
-            mode = "enhanced" if self._use_enhanced_model() else "original"
-            print(f"Initialized JAE ({mode} mode):")
+            print(f"Initialized JAE (backend={self.backend}):")
             print(f"  Input channels: {input_channels}")
+            print(f"  Timepoints: {n_timepoints}")
             print(f"  Latent dimension: {self.latent_dim}")
-            if self._use_enhanced_model():
-                print(f"  Networks: {self.num_networks}")
-                print(f"  U-Net: {self.use_unet}")
-                print(f"  VICReg: {self.use_vicreg}")
 
-    def fit(self, X, epochs=100, batch_size=32, validation_split=0.0, verbose=None):
-        """
-        Train the JAE on noisy neural data.
+    def fit(
+        self,
+        X,
+        epochs: int = 100,
+        batch_size: int = 32,
+        verbose: bool | None = None,
+    ) -> "JAE":
+        """Train the model on noisy neural data.
 
         Parameters
         ----------
         X : array-like, shape (n_samples, n_channels, n_timepoints)
             Noisy neural recordings.
         epochs : int, default=100
-            Number of training epochs.
         batch_size : int, default=32
-            Batch size for training.
-        validation_split : float, default=0.0
-            Fraction of data for validation.
         verbose : bool, optional
-            Override instance verbose setting.
+            Override the instance verbose setting.
 
         Returns
         -------
@@ -183,27 +180,24 @@ class JAE:
         n_samples, n_channels, seq_len = X.shape
 
         if self.model is None:
-            self._initialize_model(n_channels)
+            self._initialize_model(n_channels, seq_len)
 
-        # Adjust batch size if needed
+        # Fit per-channel standardization on the training data only. A linear
+        # decoder plus zero-mean, unit-variance inputs give the reconstruction
+        # loss a well-scaled gradient; without it the tiny raw signal scale
+        # stalls training in a near-constant-output local minimum.
+        if self.standardize:
+            self.mean_ = X.mean(dim=(0, 2), keepdim=True)
+            self.std_ = X.std(dim=(0, 2), keepdim=True).clamp_min(1e-6)
+        X = self._apply_standardize(X)
+
         if n_samples < batch_size:
             batch_size = max(n_samples // 4, 2)
             if verbose:
                 print(f"Reduced batch_size to {batch_size} for small dataset")
 
-        # Create data loaders
-        if validation_split > 0:
-            n_train = int(n_samples * (1 - validation_split))
-            train_dataset = TensorDataset(X[:n_train], X[:n_train])
-            val_dataset = TensorDataset(X[n_train:], X[n_train:])
-            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-            val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-        else:
-            train_dataset = TensorDataset(X, X)
-            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-            val_loader = None
+        loader = DataLoader(TensorDataset(X), batch_size=batch_size, shuffle=True, drop_last=True)
 
-        # Initialize optimizer
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(),
             lr=self.learning_rate,
@@ -214,206 +208,137 @@ class JAE:
             print(f"\nTraining for {epochs} epochs...")
 
         self.model.train()
-        self.training_history_ = {"train_loss": [], "val_loss": []}
+        self.training_history_ = {"train_loss": []}
 
         for epoch in range(epochs):
-            epoch_loss = 0
+            epoch_loss = 0.0
             n_batches = 0
-
-            for batch_data, _ in train_loader:
-                batch_data = batch_data.to(self.device)
+            for (batch,) in loader:
+                batch = batch.to(self.device)
                 self.optimizer.zero_grad()
-
-                # Forward pass and loss
-                if self._use_enhanced_model():
-                    _, reconstructions, latents, targets = self.model(batch_data)
-                    loss = jae2_loss_fn(
-                        reconstructions,
-                        latents,
-                        targets,
-                        use_vicreg=self.use_vicreg,
-                    )
-                else:
-                    x_denoised, z1, z2, x1_target, x2_target = self.model(batch_data)
-                    half_dim = self.model.half_dim
-                    x1_hat = x_denoised[:, :half_dim, :]
-                    x2_hat = x_denoised[:, half_dim:, :]
-                    loss = jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_target, x2_target)
-
+                out = self.model(batch)
+                loss = self.model.loss(out, **self._loss_kwargs)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.optimizer.step()
-
                 epoch_loss += loss.item()
                 n_batches += 1
 
-            avg_loss = epoch_loss / n_batches
+            avg_loss = epoch_loss / max(n_batches, 1)
             self.training_history_["train_loss"].append(avg_loss)
 
-            # Validation
-            if val_loader is not None:
-                val_loss = self._validate(val_loader)
-                self.training_history_["val_loss"].append(val_loss)
-
-            # Print progress
             if verbose and ((epoch + 1) % max(1, epochs // 10) == 0 or epoch == 0):
-                msg = f"Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}"
-                if val_loader is not None:
-                    msg += f", Val: {val_loss:.4f}"
-                print(msg)
+                print(f"Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}")
 
         self.is_fitted = True
         if verbose:
             print("Training complete.")
-
         return self
 
-    def _validate(self, val_loader):
-        """Compute validation loss."""
-        self.model.eval()
-        val_loss = 0
-        n_batches = 0
-
-        with torch.no_grad():
-            for batch_data, _ in val_loader:
-                batch_data = batch_data.to(self.device)
-
-                if self._use_enhanced_model():
-                    _, reconstructions, latents, targets = self.model(batch_data)
-                    loss = jae2_loss_fn(reconstructions, latents, targets, use_vicreg=self.use_vicreg)
-                else:
-                    x_denoised, z1, z2, x1_target, x2_target = self.model(batch_data)
-                    half_dim = self.model.half_dim
-                    x1_hat = x_denoised[:, :half_dim, :]
-                    x2_hat = x_denoised[:, half_dim:, :]
-                    loss = jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_target, x2_target)
-
-                val_loss += loss.item()
-                n_batches += 1
-
-        self.model.train()
-        return val_loss / n_batches
-
-    def denoise(self, X, batch_size=None):
-        """
-        Denoise neural signals.
+    def denoise(self, X, batch_size: int = 64):
+        """Denoise neural signals.
 
         Parameters
         ----------
         X : array-like, shape (n_samples, n_channels, n_timepoints)
-            Noisy neural recordings.
-        batch_size : int, optional
-            Batch size for inference.
+        batch_size : int, default=64
 
         Returns
         -------
         denoised : ndarray, shape (n_samples, n_channels, n_timepoints)
-            Denoised signals.
         """
         if not self.is_fitted:
             raise RuntimeError("Model must be fitted before denoising. Call fit() first.")
 
         X = validate_input_data(X, name="X")
-
         if X.shape[1] != self.input_channels_:
-            raise ValueError(
-                f"Expected {self.input_channels_} channels, got {X.shape[1]}"
-            )
+            raise ValueError(f"Expected {self.input_channels_} channels, got {X.shape[1]}.")
 
-        if batch_size is None:
-            batch_size = 32
-
-        dataset = TensorDataset(X)
-        loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-
+        X = self._apply_standardize(X)
+        loader = DataLoader(TensorDataset(X), batch_size=batch_size, shuffle=False)
         self.model.eval()
-        denoised_batches = []
-
+        out_batches = []
         with torch.no_grad():
-            for (batch_data,) in loader:
-                batch_data = batch_data.to(self.device)
-                denoised = self.model(batch_data)[0]
-                denoised_batches.append(denoised.cpu())
+            for (batch,) in loader:
+                batch = batch.to(self.device)
+                if hasattr(self.model, "denoise"):
+                    denoised = self.model.denoise(batch)
+                else:
+                    denoised = self.model(batch).denoised
+                out_batches.append(denoised.cpu())
+        denoised = torch.cat(out_batches, dim=0)
+        return self._invert_standardize(denoised).numpy()
 
-        return torch.cat(denoised_batches, dim=0).numpy()
+    def _apply_standardize(self, X):
+        """Standardize input with the fitted per-channel stats (no-op if disabled)."""
+        if not self.standardize or self.mean_ is None:
+            return X
+        return (X - self.mean_) / self.std_
+
+    def _invert_standardize(self, X):
+        """Undo standardization on a denoised output (no-op if disabled)."""
+        if not self.standardize or self.mean_ is None:
+            return X
+        return X * self.std_.cpu() + self.mean_.cpu()
 
     def fit_denoise(self, X, **fit_params):
         """Fit and denoise in one call."""
         self.fit(X, **fit_params)
         return self.denoise(X)
 
-    def score(self, y_true, y_pred):
-        """
-        Compute Variance Accounted For (VAF / R²) between signals.
-
-        This is the primary evaluation metric from the paper.
+    def score(self, y_true, y_pred, per_channel: bool = False):
+        """Variance Accounted For (VAF / R^2) between signals.
 
         Parameters
         ----------
-        y_true : array-like
-            Ground truth (noise-free) signals.
-        y_pred : array-like
-            Predicted (denoised) signals.
-
-        Returns
-        -------
-        vaf : float
-            Variance Accounted For (R² score).
+        y_true, y_pred : array-like, shape (n_samples, n_channels, n_timepoints)
+        per_channel : bool, default=False
+            If True, return the full per-channel report dict from
+            :func:`jae.metrics.per_channel_vaf`; otherwise return the mean VAF.
         """
-        if isinstance(y_true, torch.Tensor):
-            y_true = y_true.detach().cpu().numpy()
-        if isinstance(y_pred, torch.Tensor):
-            y_pred = y_pred.detach().cpu().numpy()
-
-        y_true = y_true.flatten()
-        y_pred = y_pred.flatten()
-
-        ss_res = np.sum((y_true - y_pred) ** 2)
-        ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
-
-        if ss_tot == 0:
-            return 1.0 if ss_res == 0 else 0.0
-
-        return 1 - (ss_res / ss_tot)
+        if per_channel:
+            return per_channel_vaf(y_true, y_pred)
+        return vaf(y_true, y_pred)
 
     def get_training_history(self):
-        """Get training loss history."""
+        """Return the training loss history."""
         if not self.is_fitted:
             raise RuntimeError("Model has not been trained.")
         return self.training_history_
 
-    def save(self, path):
-        """Save model to disk."""
+    def save(self, path: str) -> None:
+        """Save the model to disk."""
         if not self.is_fitted:
-            raise RuntimeError("Cannot save unfitted model.")
-
+            raise RuntimeError("Cannot save an unfitted model.")
         torch.save(
             {
                 "model_state_dict": self.model.state_dict(),
+                "backend": self.backend,
                 "latent_dim": self.latent_dim,
                 "input_channels": self.input_channels_,
-                "dropout_p": self.dropout_p,
-                "use_unet": self.use_unet,
-                "use_vicreg": self.use_vicreg,
-                "num_networks": self.num_networks,
-                "subsample_fraction": self.subsample_fraction,
-                "unet_channels": self.unet_channels,
+                "n_timepoints": self.n_timepoints_,
+                "seed": self.seed,
+                "backend_kwargs": self.backend_kwargs,
+                "loss_kwargs": self._loss_kwargs,
+                "standardize": self.standardize,
+                "mean_": self.mean_,
+                "std_": self.std_,
             },
             path,
         )
 
-    def load(self, path):
-        """Load model from disk."""
+    def load(self, path: str) -> "JAE":
+        """Load a model from disk."""
         checkpoint = torch.load(path, map_location=self.device, weights_only=False)
-
+        self.backend = checkpoint["backend"]
         self.latent_dim = checkpoint["latent_dim"]
-        self.dropout_p = checkpoint.get("dropout_p", 0.05)
-        self.use_unet = checkpoint.get("use_unet", False)
-        self.use_vicreg = checkpoint.get("use_vicreg", False)
-        self.num_networks = checkpoint.get("num_networks", 2)
-        self.subsample_fraction = checkpoint.get("subsample_fraction", 0.5)
-        self.unet_channels = checkpoint.get("unet_channels", [32, 64])
-
-        self._initialize_model(checkpoint["input_channels"])
+        self.seed = checkpoint.get("seed", 0)
+        self.backend_kwargs = checkpoint.get("backend_kwargs", {})
+        self.standardize = checkpoint.get("standardize", False)
+        self.mean_ = checkpoint.get("mean_")
+        self.std_ = checkpoint.get("std_")
+        self._initialize_model(checkpoint["input_channels"], checkpoint["n_timepoints"])
+        self._loss_kwargs = checkpoint.get("loss_kwargs", {})
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.is_fitted = True
+        return self

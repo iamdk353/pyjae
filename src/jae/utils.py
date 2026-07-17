@@ -3,11 +3,11 @@ Utility functions for JAE package.
 """
 
 import warnings
+
 import numpy as np
 import torch
-from scipy.ndimage import gaussian_filter1d
-from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 
 def get_device(use_gpu=True, device_id=None, verbose=True):
@@ -64,145 +64,6 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
-
-
-def simulate_neural_data(
-    n_samples=500,
-    n_channels=96,
-    n_timepoints=128,
-    latent_dim=6,
-    snr_db=5.0,
-    nonlinear=True,
-    alpha=2.0,
-    smoothing_sigma=2.0,
-    seed=None,
-):
-    """
-    Generate simulated neural data following Altan et al. (2021), Fig 1.
-
-    The procedure:
-    1. Sample d latent signals from Poisson-like firing rate distribution
-    2. Smooth with Gaussian kernel
-    3. Linear embedding via mixing matrix W (Gaussian entries)
-    4. Scale each channel to [0, 1]
-    5. Optional nonlinear embedding via exponential (Eq 1)
-    6. Add Gaussian noise with specified SNR
-
-    Parameters
-    ----------
-    n_samples : int, default=500
-        Number of samples (trials).
-    n_channels : int, default=96
-        Number of recording channels (N in paper).
-    n_timepoints : int, default=128
-        Timepoints per sample (M in paper).
-    latent_dim : int, default=6
-        Intrinsic dimensionality (d in paper).
-    snr_db : float, default=5.0
-        Signal-to-noise ratio in dB.
-    nonlinear : bool, default=True
-        Apply exponential nonlinearity (Eq 1).
-    alpha : float, default=2.0
-        Nonlinearity parameter (higher = more nonlinear).
-    smoothing_sigma : float, default=2.0
-        Gaussian smoothing sigma (in samples, ~50ms at 25Hz).
-    seed : int, optional
-        Random seed for reproducibility.
-
-    Returns
-    -------
-    clean : Tensor, shape (n_samples, n_channels, n_timepoints)
-        Noise-free signals (ground truth).
-    noisy : Tensor, shape (n_samples, n_channels, n_timepoints)
-        Noisy signals.
-    info : dict
-        Metadata including SNR, latent_dim, etc.
-
-    Examples
-    --------
-    >>> clean, noisy, info = simulate_neural_data(n_samples=100, snr_db=5.0)
-    >>> print(f"SNR: {info['snr_db']:.1f} dB")
-    """
-    if seed is not None:
-        np.random.seed(seed)
-
-    # Step 1: Generate latent signals from Poisson-like distribution
-    # Simulate firing rates (Poisson parameter lambda ~ exponential distribution)
-    # Sample rates typically 0-50 Hz, peaked at low values
-    latents = np.zeros((n_samples, latent_dim, n_timepoints))
-
-    for i in range(n_samples):
-        for d in range(latent_dim):
-            # Generate smooth temporal dynamics (mimics neural population activity)
-            t = np.linspace(0, 4 * np.pi, n_timepoints)
-            freq = np.random.uniform(0.5, 2.0)
-            phase = np.random.uniform(0, 2 * np.pi)
-            # Offset ensures positive values after smoothing
-            latents[i, d, :] = np.sin(freq * t + phase) + 1.5
-
-    # Step 2: Smooth with Gaussian kernel
-    if smoothing_sigma > 0:
-        for i in range(n_samples):
-            for d in range(latent_dim):
-                latents[i, d, :] = gaussian_filter1d(latents[i, d, :], sigma=smoothing_sigma)
-
-    # Step 3: Linear embedding via mixing matrix W
-    # W has entries from N(0, 1) as per paper
-    W = np.random.randn(n_channels, latent_dim)
-
-    # Project: X = latents @ W.T
-    # Reshape for efficient computation
-    latents_flat = latents.transpose(0, 2, 1).reshape(n_samples * n_timepoints, latent_dim)
-    X_flat = latents_flat @ W.T
-    X = X_flat.reshape(n_samples, n_timepoints, n_channels).transpose(0, 2, 1)
-
-    # Step 4: Global normalization to [0, 1]
-    # Note: Global normalization preserves shared dynamics across channels,
-    # which is essential for JAE to leverage the split-channel structure.
-    X_min, X_max = X.min(), X.max()
-    if X_max > X_min:
-        X = (X - X_min) / (X_max - X_min)
-    else:
-        X = np.full_like(X, 0.5)
-
-    # Step 5: Nonlinear embedding (Eq 1 from paper)
-    if nonlinear and alpha > 0:
-        # x_nonlin = (exp(alpha * x) - 1) / (exp(alpha) - 1)
-        # This maps [0,1] -> [0,1] with controlled nonlinearity
-        X = (np.exp(alpha * X) - 1) / (np.exp(alpha) - 1)
-
-    clean = X.copy()
-
-    # Step 6: Add Gaussian noise with specified SNR
-    signal_power = np.mean(clean**2)
-    snr_linear = 10 ** (snr_db / 10)
-    noise_power = signal_power / snr_linear
-    noise_std = np.sqrt(noise_power)
-
-    noise = np.random.randn(*clean.shape) * noise_std
-    noisy = clean + noise
-
-    # Clip to valid range (neural signals are non-negative)
-    noisy = np.clip(noisy, 0, None)
-
-    # Compute actual SNR
-    actual_snr = 10 * np.log10(signal_power / np.mean((clean - noisy) ** 2 + 1e-10))
-
-    info = {
-        "snr_db": float(actual_snr),
-        "latent_dim": latent_dim,
-        "n_channels": n_channels,
-        "n_timepoints": n_timepoints,
-        "n_samples": n_samples,
-        "nonlinear": nonlinear,
-        "alpha": alpha if nonlinear else 0,
-    }
-
-    return (
-        torch.tensor(clean, dtype=torch.float32),
-        torch.tensor(noisy, dtype=torch.float32),
-        info,
-    )
 
 
 def calculate_vaf(y_true, y_pred):

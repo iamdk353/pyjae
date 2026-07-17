@@ -1,42 +1,109 @@
+"""JAE: Joint Autoencoders for neural signal denoising and manifold learning.
+
+Two model families:
+
+- :class:`JAE1` (and the :class:`JAE` facade with ``backend="jae1"``): a modular,
+  collapse-resistant channel-split autoencoder, a corrected reimplementation of
+  Altan et al. (2021).
+- :class:`JAE2` (facade ``backend="jepa"``): a JEPA-style joint-embedding
+  predictive model that learns the underlying manifold by predicting
+  masked-region embeddings in latent space.
+
+Supporting modules: :mod:`jae.data` (simulation and controls), :mod:`jae.views`
+(modular channel-split / masking strategies), :mod:`jae.metrics` (a non-gameable
+latent-quality and invariance panel), :mod:`jae.baselines` (PCA, Factor Analysis,
+denoising autoencoder, Wiener oracle), and :mod:`jae.eval` (the benchmark harness).
 """
-JAE: Joint Autoencoder for Neural Signal Denoising
 
-A PyTorch implementation of the Joint Autoencoder from Altan et al. (2021)
-for denoising high-dimensional neural signals.
-"""
+__version__ = "0.2.0"
 
-__version__ = "0.1.0"
-
-from .api import JAE
-from .utils import (
-    get_device,
+from jae.api import JAE
+from jae.baselines import (
+    DenoisingAutoencoder,
+    factor_analysis_denoise,
+    mean_predictor,
+    pca_denoise,
+    wiener_oracle,
+)
+from jae.data import (
+    make_noise_only,
+    phase_shuffle,
     simulate_neural_data,
-    calculate_vaf,
+    simulate_paired_noise,
+    train_val_test_split,
+)
+from jae.losses import jae1_loss_fn, jae2_jepa_loss_fn, jepa_loss, vicreg_reg
+from jae.metrics import (
+    alignment,
+    collapse_report,
+    effective_rank,
+    invariance_ratio,
+    lidar,
+    nuisance_probe,
+    participation_ratio,
+    per_channel_vaf,
+    uniformity,
+)
+from jae.models import JAE1, JAE2
+from jae.utils import (
     calculate_snr,
+    calculate_vaf,
+    get_device,
     run_pca_baseline,
     set_seed,
+    validate_input_data,
+)
+from jae.views import (
+    ContiguousSplit,
+    OverlappingSplit,
+    RandomDisjointSplit,
+    SpatioTemporalBlockMask,
 )
 
-# For advanced users
-from .models import JAE1, JAE2, SimpleAutoencoder, UNet1D
-from .losses import jae1_loss_fn, jae2_loss_fn, vicreg_loss
-
 __all__ = [
-    "JAE",
     "__version__",
-    # Utilities
-    "get_device",
+    # High-level API
+    "JAE",
+    # Models
+    "JAE1",
+    "JAE2",
+    # Data + controls
     "simulate_neural_data",
+    "simulate_paired_noise",
+    "phase_shuffle",
+    "make_noise_only",
+    "train_val_test_split",
+    # Views / splits
+    "RandomDisjointSplit",
+    "ContiguousSplit",
+    "OverlappingSplit",
+    "SpatioTemporalBlockMask",
+    # Metrics
+    "per_channel_vaf",
+    "effective_rank",
+    "participation_ratio",
+    "lidar",
+    "alignment",
+    "uniformity",
+    "invariance_ratio",
+    "nuisance_probe",
+    "collapse_report",
+    # Baselines
+    "pca_denoise",
+    "factor_analysis_denoise",
+    "mean_predictor",
+    "wiener_oracle",
+    "DenoisingAutoencoder",
+    # Losses
+    "jae1_loss_fn",
+    "jae2_jepa_loss_fn",
+    "jepa_loss",
+    "vicreg_reg",
+    # Utils
+    "get_device",
+    "set_seed",
     "calculate_vaf",
     "calculate_snr",
     "run_pca_baseline",
-    "set_seed",
-    # Advanced
-    "JAE1",
-    "JAE2",
-    "SimpleAutoencoder",
-    "UNet1D",
-    "jae1_loss_fn",
-    "jae2_loss_fn",
-    "vicreg_loss",
+    "validate_input_data",
 ]

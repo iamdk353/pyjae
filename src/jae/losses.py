@@ -4,9 +4,10 @@ Loss functions for JAE models.
 
 import torch
 import torch.nn.functional as F
+from torch import Tensor
 
 
-def jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_target, x2_target, latent_weight=2.0):
+def jae1_loss_fn(x1_hat, x2_hat, z1, z2, x1_target, x2_target, latent_weight=1.0):
     """
     Original JAE loss function from Altan et al. (2021), Eq 3.
 
@@ -204,3 +205,128 @@ def jae2_loss_fn(
         latent_loss = mse_latent_alignment(latents)
 
     return recon_weight * recon_loss + latent_weight * latent_loss
+
+
+def vicreg_reg(
+    Z: Tensor,  # noqa: N803
+    gamma: float = 1.0,
+    eps: float = 1e-4,
+) -> tuple[Tensor, Tensor]:
+    """
+    VICReg variance and covariance regularization terms for a single embedding matrix.
+
+    Reference: Bardes et al. (2022), ICLR.
+
+    Parameters
+    ----------
+    Z : Tensor, shape (N, D)
+        Embedding matrix (N samples, D feature dimensions).
+    gamma : float, default=1.0
+        Target standard deviation floor for the variance hinge.
+    eps : float, default=1e-4
+        Numerical stability constant added to the variance before the square root.
+
+    Returns
+    -------
+    var_term : Tensor
+        Scalar. Mean over dimensions of relu(gamma - sqrt(Var(z_j) + eps)), the
+        std-hinge per-dimension variance floor.
+    cov_term : Tensor
+        Scalar. Sum of squared off-diagonal entries of the covariance matrix of Z,
+        divided by the feature dimension D.
+    """
+    n, d = Z.shape
+    z_centered = Z - Z.mean(dim=0)
+    cov_z = (z_centered.T @ z_centered) / (n - 1)
+
+    std_z = torch.sqrt(cov_z.diag() + eps)
+    var_term = torch.mean(F.relu(gamma - std_z))
+
+    if d > 1:
+        mask = ~torch.eye(d, dtype=torch.bool, device=Z.device)
+        cov_term = cov_z[mask].pow(2).sum() / d
+    else:
+        cov_term = torch.tensor(0.0, device=Z.device)
+
+    return var_term, cov_term
+
+
+def jepa_loss(
+    pred: Tensor, target: Tensor, stop_grad: bool = True, huber_beta: float = 1.0
+) -> Tensor:
+    """
+    JEPA prediction loss: Smooth L1 (Huber) loss between predicted and target embeddings.
+
+    Parameters
+    ----------
+    pred : Tensor
+        Predicted embeddings from the context branch.
+    target : Tensor, same shape as pred
+        Target embeddings from the target branch.
+    stop_grad : bool, default=True
+        If True, gradients are stopped on the target branch (target.detach()).
+    huber_beta : float, default=1.0
+        Beta (transition point) for the Smooth L1 loss.
+
+    Returns
+    -------
+    loss : Tensor
+        Scalar loss value.
+    """
+    target_ = target.detach() if stop_grad else target
+    return F.smooth_l1_loss(pred, target_, beta=huber_beta)
+
+
+def jae2_jepa_loss_fn(
+    pred_tokens: Tensor,
+    target_tokens: Tensor,
+    Z_ctx: Tensor,  # noqa: N803
+    Z_tgt: Tensor,  # noqa: N803
+    lambda_pred: float = 25.0,
+    lambda_var: float = 25.0,
+    lambda_cov: float = 1.0,
+    huber_beta: float = 1.0,
+) -> Tensor:
+    """
+    JAE2 / JEPA-style loss: prediction loss plus VICReg variance/covariance regularization.
+
+    L = lambda_pred * L_pred + lambda_var * [v(Z_ctx) + v(Z_tgt)]
+        + lambda_cov * [c(Z_ctx) + c(Z_tgt)]
+
+    Stop-gradient is applied to target_tokens (the target branch), following the
+    standard JEPA / SimSiam recipe to prevent representation collapse.
+
+    Parameters
+    ----------
+    pred_tokens : Tensor
+        Predicted target-token embeddings from the context branch.
+    target_tokens : Tensor, same shape as pred_tokens
+        Target-token embeddings. Stop-gradient is applied internally.
+    Z_ctx : Tensor, shape (N, D)
+        Context branch embedding matrix, used for VICReg regularization.
+    Z_tgt : Tensor, shape (N, D)
+        Target branch embedding matrix, used for VICReg regularization.
+    lambda_pred : float, default=25.0
+        Weight for the JEPA prediction loss.
+    lambda_var : float, default=25.0
+        Weight for the variance hinge term (summed over context and target).
+    lambda_cov : float, default=1.0
+        Weight for the covariance term (summed over context and target).
+    huber_beta : float, default=1.0
+        Beta for the Smooth L1 prediction loss.
+
+    Returns
+    -------
+    loss : Tensor
+        Scalar loss value.
+    """
+    pred_loss = jepa_loss(pred_tokens, target_tokens, stop_grad=True, huber_beta=huber_beta)
+
+    var_ctx, cov_ctx = vicreg_reg(Z_ctx)
+    var_tgt, cov_tgt = vicreg_reg(Z_tgt)
+
+    return (
+        lambda_pred * pred_loss
+        + lambda_var * (var_ctx + var_tgt)
+        + lambda_cov * (cov_ctx + cov_tgt)
+    )

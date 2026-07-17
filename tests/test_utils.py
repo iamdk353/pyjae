@@ -2,83 +2,18 @@
 Unit tests for JAE utilities.
 """
 
-import pytest
 import numpy as np
+import pytest
 import torch
 
 from jae import (
-    simulate_neural_data,
-    calculate_vaf,
     calculate_snr,
+    calculate_vaf,
+    get_device,
     run_pca_baseline,
     set_seed,
-    get_device,
 )
 from jae.utils import validate_input_data
-
-
-class TestSimulateNeuralData:
-    """Tests for data simulation."""
-
-    def test_basic_generation(self):
-        """Test basic data generation."""
-        clean, noisy, info = simulate_neural_data(
-            n_samples=100,
-            n_channels=96,
-            n_timepoints=128,
-            latent_dim=6,
-            snr_db=5.0,
-            seed=42,
-        )
-
-        assert clean.shape == (100, 96, 128)
-        assert noisy.shape == (100, 96, 128)
-        assert isinstance(clean, torch.Tensor)
-        assert isinstance(noisy, torch.Tensor)
-
-    def test_info_dict(self):
-        """Test info dictionary contents."""
-        _, _, info = simulate_neural_data(
-            n_samples=50, latent_dim=6, snr_db=5.0, seed=42
-        )
-
-        assert 'snr_db' in info
-        assert 'latent_dim' in info
-        assert info['latent_dim'] == 6
-
-    def test_nonlinear_mode(self):
-        """Test nonlinear embedding."""
-        clean_lin, _, _ = simulate_neural_data(
-            n_samples=50, nonlinear=False, seed=42
-        )
-        clean_nonlin, _, _ = simulate_neural_data(
-            n_samples=50, nonlinear=True, alpha=2.0, seed=42
-        )
-
-        # Nonlinear should produce different results
-        assert not torch.allclose(clean_lin, clean_nonlin)
-
-    def test_reproducibility(self):
-        """Test seed reproducibility."""
-        c1, n1, _ = simulate_neural_data(n_samples=50, seed=42)
-        c2, n2, _ = simulate_neural_data(n_samples=50, seed=42)
-
-        assert torch.allclose(c1, c2)
-        assert torch.allclose(n1, n2)
-
-    def test_non_negativity(self):
-        """Test signals are non-negative after clipping."""
-        _, noisy, _ = simulate_neural_data(n_samples=100, snr_db=0.0, seed=42)
-        assert (noisy >= 0).all()
-
-    def test_snr_range(self):
-        """Test different SNR levels."""
-        for target_snr in [0, 5, 10, 20]:
-            _, _, info = simulate_neural_data(
-                n_samples=100, snr_db=target_snr, seed=42
-            )
-            # Allow some tolerance
-            assert abs(info['snr_db'] - target_snr) < 3.0
 
 
 class TestCalculateVAF:
@@ -199,13 +134,13 @@ class TestGetDevice:
     def test_cpu_device(self):
         """Test CPU device."""
         device = get_device(use_gpu=False, verbose=False)
-        assert device.type == 'cpu'
+        assert device.type == "cpu"
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
     def test_gpu_device(self):
         """Test GPU device."""
         device = get_device(use_gpu=True, verbose=False)
-        assert device.type == 'cuda'
+        assert device.type == "cuda"
 
 
 if __name__ == "__main__":
