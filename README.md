@@ -4,8 +4,9 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Two joint-autoencoder models for denoising high-dimensional neural population
-recordings and recovering the low-dimensional manifold underneath them:
+`pyjae` (pronounced "pie-jay") provides two joint-autoencoder models for
+denoising high-dimensional neural population recordings and recovering the
+low-dimensional manifold underneath them:
 
 - **JAE1** is a corrected reimplementation of the channel-split Joint Autoencoder
   from [Altan et al. (2021)](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1008591).
