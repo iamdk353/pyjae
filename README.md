@@ -19,9 +19,21 @@ recordings and recovering the low-dimensional manifold underneath them:
 ## Installation
 
 ```bash
+pip install jae
+```
+
+Or with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv add jae
+```
+
+For development from source:
+
+```bash
 git clone https://github.com/egealtan/jae.git
 cd jae
-uv sync            # or: pip install -e ".[dev]"
+uv sync            # installs the package with the dev extras
 ```
 
 ## Quick start
