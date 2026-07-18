@@ -1,0 +1,32 @@
+name: Publish to PyPI
+
+# Publishes to PyPI via Trusted Publishing (OIDC) whenever a GitHub Release is
+# published. No API tokens are stored anywhere: PyPI verifies the workflow's
+# short-lived OIDC identity instead. See the repo README / PyPI docs for the
+# one-time trusted-publisher setup on pypi.org.
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # required for Trusted Publishing
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

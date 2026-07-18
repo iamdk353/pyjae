@@ -4,18 +4,10 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-`pyjae` (pronounced "pie-jay") provides two joint-autoencoder models for
-denoising high-dimensional neural population recordings and recovering the
-low-dimensional manifold underneath them:
-
-- **JAE1** is a corrected reimplementation of the channel-split Joint Autoencoder
-  from [Altan et al. (2021)](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1008591).
-  It splits channels into disjoint partitions that share the signal but carry
-  independent noise, and denoises by forcing their latents to agree.
-- **JAE2** is a JEPA (Joint-Embedding Predictive Architecture): instead of a
-  fixed channel split, it masks part of the input and predicts the *embedding*
-  of the masked region from the visible context, learning the manifold with a
-  VICReg objective that prevents latent collapse.
+`pyjae` (pronounced "pie-jay") is the official implementation of joint autoencoder
+models for denoising high-dimensional neural population recordings and recovering
+the low-dimensional manifold underneath, based on
+[Altan et al. (2021)](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1008591).
 
 ## Installation
 
@@ -63,51 +55,6 @@ model.fit(noisy, epochs=150)
 denoised = model.denoise(noisy)
 ```
 
-## How it works
-
-**JAE1 (channel split).** The recorded channels are partitioned into two disjoint
-sets. Both observe the same underlying low-dimensional signal, but the per-channel
-noise is independent across the partitions. Each partition is encoded and decoded
-by its own autoencoder, and the loss adds a term that pulls the two partitions'
-latents together:
-
-```
-C = MSE(X1, X1_hat) + MSE(X2, X2_hat) + ||Z1 - Z2||^2
-```
-
-Matching independent noise realizations is not a low-cost solution, so the model
-keeps only the shared, denoised structure. This is the Noise2Noise principle
-applied across channel subsets, and it is why a plain autoencoder without the
-split has no comparable pressure to reject channel-specific noise.
-
-**JAE2 (JEPA).** A single shared encoder embeds both a masked "context" view and
-the full input. A small predictor guesses the embeddings of the masked region
-from the context, and the loss is computed in latent space (Smooth-L1), not
-signal space, so the model can discard unpredictable noise instead of
-reconstructing it. A VICReg variance/covariance term keeps the representation
-from collapsing. A lightweight decoder head turns the encoding into a denoised
-signal.
-
-## Evaluation
-
-Denoising quality is measured as per-channel Variance Accounted For (VAF / R^2)
-against the clean ground truth, on a held-out test split, with matched latent
-dimensions across methods. The results are regime-specific by design:
-
-- On **linear** data, PCA and Factor Analysis are near-optimal and beat JAE1
-  (a JAE win here would be a red flag).
-- On **nonlinear** data, JAE1 beats PCA and Factor Analysis, and the margin
-  grows with the strength of the nonlinearity, reproducing the paper's central
-  finding.
-
-The harness also runs negative controls (phase-shuffled and pure-noise data) to
-confirm the model does not invent structure that is not there. Run it with:
-
-```bash
-uv run python scripts/benchmark.py --quick     # small, fast sweep
-uv run python scripts/benchmark.py             # fuller sweep
-```
-
 ## Package layout
 
 | Module | Purpose |
@@ -118,7 +65,7 @@ uv run python scripts/benchmark.py             # fuller sweep
 | `pyjae.data` | Simulator (Altan et al. generative model) and evaluation controls |
 | `pyjae.metrics` | Per-channel VAF plus a collapse-resistant latent-quality panel |
 | `pyjae.baselines` | PCA, Factor Analysis, denoising autoencoder, Wiener oracle |
-| `pyjae.eval` | Non-gameable benchmark harness |
+| `pyjae.eval` | Benchmark and evaluation harness |
 
 ## Requirements
 
