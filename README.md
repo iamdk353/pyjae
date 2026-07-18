@@ -1,8 +1,14 @@
-# `pyjae`: Joint Autoencoders (JAE) for Neural Signal Denoising
+<div align="center">
+
+# `pyjae`
+
+**Joint Autoencoders (JAE) for Neural Signal Denoising**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+</div>
 
 `pyjae` (pronounced "pie-jay") is the official implementation of joint autoencoder
 models for denoising high-dimensional neural population recordings and recovering
