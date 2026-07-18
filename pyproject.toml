@@ -46,13 +46,9 @@ dev = [
     "pytest-cov>=4.0.0",
     "jupyter>=1.0.0",
     "matplotlib>=3.5.0",
-    "black>=23.0.0",
     "ruff>=0.1.0",
-]
-docs = [
-    "sphinx>=5.0.0",
-    "sphinx-rtd-theme>=1.0.0",
-    "sphinx-autodoc-typehints>=1.19.0",
+    "build>=1.0.0",
+    "twine>=5.0.0",
 ]
 
 [project.urls]
@@ -63,17 +59,15 @@ Repository = "https://github.com/egealtan/jae"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+jae = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --cov=jae --cov-report=term-missing --cov-report=html"
-
-[tool.black]
-line-length = 100
-target-version = ['py38', 'py39', 'py310', 'py311']
-include = '\.pyi?$'
 
 [tool.ruff]
 line-length = 100
