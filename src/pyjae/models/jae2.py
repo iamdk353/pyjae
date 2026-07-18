@@ -19,9 +19,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
-from jae.losses import jae2_jepa_loss_fn
-from jae.models.encoders import ConvPatchEncoder
-from jae.views import JEPAMask, SpatioTemporalBlockMask
+from pyjae.losses import jae2_jepa_loss_fn
+from pyjae.models.encoders import ConvPatchEncoder
+from pyjae.views import JEPAMask, SpatioTemporalBlockMask
 
 
 def _match_length(x: torch.Tensor, target_len: int) -> torch.Tensor:
@@ -56,7 +56,7 @@ class JAE2Output(NamedTuple):
             a separate full-input (unmasked) encoder pass, shape
             ``(M, d_model)``, same order as ``pred_tokens``. These carry a live
             autograd graph back to the encoder; the JEPA loss detaches them
-            internally (see :func:`jae.losses.jepa_loss`).
+            internally (see :func:`pyjae.losses.jepa_loss`).
         z_context: Projected, pooled context-branch embeddings used for the
             VICReg variance/covariance terms, shape ``(N, latent_dim)`` where
             ``N = B * n_patches``.
@@ -74,7 +74,7 @@ class JAE2Output(NamedTuple):
 class JAE2(nn.Module):
     """JEPA-style Joint Autoencoder: predicts masked-region embeddings, not signal.
 
-    A single shared :class:`~jae.models.encoders.ConvPatchEncoder` is run twice per
+    A single shared :class:`~pyjae.models.encoders.ConvPatchEncoder` is run twice per
     forward call:
 
     1. **Context pass**: the raw input is zeroed out at every timepoint that falls
@@ -87,7 +87,7 @@ class JAE2(nn.Module):
 
     Because both passes share one encoder (no EMA copy), the target pass still
     builds a live autograd graph. Stop-gradient is applied only inside the loss
-    (via ``jae.losses.jepa_loss``/``jae2_jepa_loss_fn``), not by detaching eagerly
+    (via ``pyjae.losses.jepa_loss``/``jae2_jepa_loss_fn``), not by detaching eagerly
     in the model, so the pooled target embeddings (``z_target``) still receive
     gradient through the VICReg variance/covariance terms while the raw
     prediction target (``target_tokens``) does not receive gradient through the
@@ -96,7 +96,7 @@ class JAE2(nn.Module):
     Masking:
         A single mask, shared across the whole batch, is sampled once per
         forward call over the ``(n_channels, n_patches)`` grid using ``self.mask``
-        (default :class:`~jae.views.SpatioTemporalBlockMask`). The union of the
+        (default :class:`~pyjae.views.SpatioTemporalBlockMask`). The union of the
         sampled target blocks gives the target grid positions; its complement is
         the context. The target region is "dropped" from the context pass by
         zeroing the corresponding raw timepoints (``patch_len`` samples per
@@ -134,7 +134,7 @@ class JAE2(nn.Module):
         d_model: Encoder token embedding dimension.
         latent_dim: Output dimension of the VICReg projector.
         predictor_dim: Hidden width of the predictor MLP.
-        mask: A :class:`~jae.views.JEPAMask` strategy. Defaults to
+        mask: A :class:`~pyjae.views.JEPAMask` strategy. Defaults to
             ``SpatioTemporalBlockMask()``.
         seed: Seed for the default mask generator used when ``forward`` is
             called without an explicit ``generator``.
@@ -306,7 +306,7 @@ class JAE2(nn.Module):
         Correctness note (stop-gradient): ``out.target_tokens`` still carries a
         live autograd graph back to the shared encoder (the target pass is not
         detached in ``forward``). ``jae2_jepa_loss_fn`` calls
-        ``jae.losses.jepa_loss`` with ``stop_grad=True``, which detaches its
+        ``pyjae.losses.jepa_loss`` with ``stop_grad=True``, which detaches its
         local copy of the target before the Smooth L1 comparison; this cuts the
         gradient path from the prediction term into the target pass, so the
         encoder cannot lower the prediction loss by "meeting the predictor

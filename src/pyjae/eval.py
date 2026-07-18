@@ -25,15 +25,15 @@ from dataclasses import dataclass, field
 import numpy as np
 import torch
 
-from jae.api import JAE
-from jae.baselines import (
+from pyjae.api import JAE
+from pyjae.baselines import (
     DenoisingAutoencoder,
     factor_analysis_denoise,
     mean_predictor,
     pca_denoise,
 )
-from jae.data import phase_shuffle, simulate_neural_data, train_val_test_split
-from jae.metrics import per_channel_vaf
+from pyjae.data import phase_shuffle, simulate_neural_data, train_val_test_split
+from pyjae.metrics import per_channel_vaf
 
 
 @dataclass

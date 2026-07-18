@@ -1,9 +1,9 @@
-"""Unit tests for the view/split generator layer (src/jae/views.py)."""
+"""Unit tests for the view/split generator layer (src/pyjae/views.py)."""
 
 import pytest
 import torch
 
-from jae.views import (
+from pyjae.views import (
     ContiguousSplit,
     OverlappingSplit,
     RandomDisjointSplit,

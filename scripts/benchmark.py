@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Honest denoising benchmark for JAE1.
 
-Runs the non-gameable evaluation from ``jae.eval``: held-out test split, matched
+Runs the non-gameable evaluation from ``pyjae.eval``: held-out test split, matched
 latent dimension across methods, per-channel VAF, a mean-predictor floor, PCA and
 Factor Analysis linear baselines, a matched-capacity denoising autoencoder, and
 phase-shuffle / noise-only negative controls.
@@ -19,8 +19,8 @@ Usage:
 
 import argparse
 
-from jae.eval import aggregate, evaluate_cell, negative_control
-from jae.utils import set_seed
+from pyjae.eval import aggregate, evaluate_cell, negative_control
+from pyjae.utils import set_seed
 
 
 def main() -> None:

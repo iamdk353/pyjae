@@ -8,9 +8,9 @@ Exposes the two Joint Autoencoder variants and their shared building blocks:
   underlying manifold by predicting masked-region embeddings in latent space.
 """
 
-from jae.models.encoders import ConvPatchEncoder, MLPDecoder, MLPEncoder
-from jae.models.jae1 import JAE1, JAE1Output
-from jae.models.jae2 import JAE2, JAE2Output
+from pyjae.models.encoders import ConvPatchEncoder, MLPDecoder, MLPEncoder
+from pyjae.models.jae1 import JAE1, JAE1Output
+from pyjae.models.jae2 import JAE2, JAE2Output
 
 __all__ = [
     "JAE1",

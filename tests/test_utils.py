@@ -6,14 +6,14 @@ import numpy as np
 import pytest
 import torch
 
-from jae import (
+from pyjae import (
     calculate_snr,
     calculate_vaf,
     get_device,
     run_pca_baseline,
     set_seed,
 )
-from jae.utils import validate_input_data
+from pyjae.utils import validate_input_data
 
 
 class TestCalculateVAF:

@@ -1,10 +1,10 @@
-"""Tests for jae.baselines: matched-capacity denoising baselines."""
+"""Tests for pyjae.baselines: matched-capacity denoising baselines."""
 
 import numpy as np
 import torch
 from sklearn.decomposition import PCA
 
-from jae.baselines import (
+from pyjae.baselines import (
     DenoisingAutoencoder,
     cv_select_k,
     factor_analysis_denoise,

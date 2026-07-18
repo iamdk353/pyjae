@@ -9,31 +9,31 @@ Two model families:
   predictive model that learns the underlying manifold by predicting
   masked-region embeddings in latent space.
 
-Supporting modules: :mod:`jae.data` (simulation and controls), :mod:`jae.views`
-(modular channel-split / masking strategies), :mod:`jae.metrics` (a non-gameable
-latent-quality and invariance panel), :mod:`jae.baselines` (PCA, Factor Analysis,
-denoising autoencoder, Wiener oracle), and :mod:`jae.eval` (the benchmark harness).
+Supporting modules: :mod:`pyjae.data` (simulation and controls), :mod:`pyjae.views`
+(modular channel-split / masking strategies), :mod:`pyjae.metrics` (a non-gameable
+latent-quality and invariance panel), :mod:`pyjae.baselines` (PCA, Factor Analysis,
+denoising autoencoder, Wiener oracle), and :mod:`pyjae.eval` (the benchmark harness).
 """
 
 __version__ = "0.2.0"
 
-from jae.api import JAE
-from jae.baselines import (
+from pyjae.api import JAE
+from pyjae.baselines import (
     DenoisingAutoencoder,
     factor_analysis_denoise,
     mean_predictor,
     pca_denoise,
     wiener_oracle,
 )
-from jae.data import (
+from pyjae.data import (
     make_noise_only,
     phase_shuffle,
     simulate_neural_data,
     simulate_paired_noise,
     train_val_test_split,
 )
-from jae.losses import jae1_loss_fn, jae2_jepa_loss_fn, jepa_loss, vicreg_reg
-from jae.metrics import (
+from pyjae.losses import jae1_loss_fn, jae2_jepa_loss_fn, jepa_loss, vicreg_reg
+from pyjae.metrics import (
     alignment,
     collapse_report,
     effective_rank,
@@ -44,8 +44,8 @@ from jae.metrics import (
     per_channel_vaf,
     uniformity,
 )
-from jae.models import JAE1, JAE2
-from jae.utils import (
+from pyjae.models import JAE1, JAE2
+from pyjae.utils import (
     calculate_snr,
     calculate_vaf,
     get_device,
@@ -53,7 +53,7 @@ from jae.utils import (
     set_seed,
     validate_input_data,
 )
-from jae.views import (
+from pyjae.views import (
     ContiguousSplit,
     OverlappingSplit,
     RandomDisjointSplit,

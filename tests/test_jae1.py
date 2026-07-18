@@ -1,10 +1,10 @@
-"""Unit tests for the modular, collapse-resistant jae.models.jae1.JAE1."""
+"""Unit tests for the modular, collapse-resistant pyjae.models.jae1.JAE1."""
 
 import torch
 import torch.nn.functional as F  # noqa: N812
 
-from jae.models.jae1 import JAE1, JAE1Output
-from jae.views import ContiguousSplit
+from pyjae.models.jae1 import JAE1, JAE1Output
+from pyjae.views import ContiguousSplit
 
 
 class TestJAE1ForwardShapes:

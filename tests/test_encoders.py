@@ -1,9 +1,9 @@
-"""Unit tests for shared encoder/decoder building blocks in jae.models.encoders."""
+"""Unit tests for shared encoder/decoder building blocks in pyjae.models.encoders."""
 
 import pytest
 import torch
 
-from jae.models.encoders import ConvPatchEncoder, MLPDecoder, MLPEncoder
+from pyjae.models.encoders import ConvPatchEncoder, MLPDecoder, MLPEncoder
 
 
 class TestMLPEncoder:

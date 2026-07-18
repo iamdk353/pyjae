@@ -1,11 +1,11 @@
-"""Unit tests for the JEPA-style JAE2 model (src/jae/models/jae2.py)."""
+"""Unit tests for the JEPA-style JAE2 model (src/pyjae/models/jae2.py)."""
 
 import math
 
 import pytest
 import torch
 
-from jae.models.jae2 import JAE2, JAE2Output
+from pyjae.models.jae2 import JAE2, JAE2Output
 
 
 def _low_rank_batch(
@@ -134,7 +134,7 @@ class TestJAE2Loss:
 
         With lambda_var = lambda_cov = 0 and recon_weight = 0, the only surviving
         loss term is lambda_pred * SmoothL1(pred_tokens, stopgrad(target_tokens)).
-        jae.losses.jepa_loss detaches its local copy of the target before the
+        pyjae.losses.jepa_loss detaches its local copy of the target before the
         Smooth L1 comparison, so no gradient should ever reach `target_tokens`
         itself (retain_grad lets us inspect that directly). This is exactly what
         prevents the "collapse the target to make prediction trivial" failure

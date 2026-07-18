@@ -1,7 +1,7 @@
 """Shared encoder/decoder building blocks used by the JAE1 and JAE2 models.
 
-This module is self-contained: it does not import from other ``jae`` modules and is not
-wired into ``jae.models.__init__``. Integration happens elsewhere.
+This module is self-contained: it does not import from other ``pyjae`` modules and is not
+wired into ``pyjae.models.__init__``. Integration happens elsewhere.
 """
 
 from collections.abc import Sequence

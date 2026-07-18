@@ -5,8 +5,8 @@ repo implementation collapsed to a degenerate latent because its per-partition
 "autoencoder" was a single Linear -> ReLU encoder: one matrix multiply has no
 capacity to represent a nonlinear compressive code, so training pushed it toward
 a trivial, near-constant solution. This module fixes that by giving each
-partition a real funnel MLP (:class:`~jae.models.encoders.MLPEncoder` /
-:class:`~jae.models.encoders.MLPDecoder`), matching the paper's architecture.
+partition a real funnel MLP (:class:`~pyjae.models.encoders.MLPEncoder` /
+:class:`~pyjae.models.encoders.MLPDecoder`), matching the paper's architecture.
 
 Why the channel split is the denoising mechanism
 --------------------------------------------------
@@ -41,8 +41,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
-from jae.models.encoders import MLPDecoder, MLPEncoder
-from jae.views import ChannelSplit, RandomDisjointSplit
+from pyjae.models.encoders import MLPDecoder, MLPEncoder
+from pyjae.views import ChannelSplit, RandomDisjointSplit
 
 
 class JAE1Output(NamedTuple):
@@ -72,10 +72,10 @@ class JAE1(nn.Module):
     """Modular, collapse-resistant Joint Autoencoder (Altan et al. 2021, Fig 2).
 
     Channels are partitioned once (at construction time, seeded) into one or
-    more index sets via a :class:`~jae.views.ChannelSplit` strategy. Each
+    more index sets via a :class:`~pyjae.views.ChannelSplit` strategy. Each
     partition gets its own funnel-MLP encoder/decoder pair
-    (:class:`~jae.models.encoders.MLPEncoder` /
-    :class:`~jae.models.encoders.MLPDecoder`), all sharing the same latent
+    (:class:`~pyjae.models.encoders.MLPEncoder` /
+    :class:`~pyjae.models.encoders.MLPDecoder`), all sharing the same latent
     dimensionality. See the module docstring for why this channel split is
     what makes denoising possible.
 
@@ -83,7 +83,7 @@ class JAE1(nn.Module):
         input_dim: Total number of channels ``C`` the model expects.
         latent_dim: Shared latent bottleneck dimension ``D`` for every
             partition's encoder/decoder.
-        split: A :class:`~jae.views.ChannelSplit` strategy used to partition
+        split: A :class:`~pyjae.views.ChannelSplit` strategy used to partition
             channel indices. Defaults to
             ``RandomDisjointSplit(n_partitions=2, fraction=0.5)``, the paper's
             50/50 random disjoint split.

@@ -1,7 +1,7 @@
 """Paper-faithful neural-data simulator, evaluation controls, and splits.
 
 Reimplements the generative model from Altan et al. (2021) with two fixes over
-the legacy simulator in ``jae.utils``:
+the legacy simulator in ``pyjae.utils``:
 
 1. Latents are diverse across latent dimensions and across samples (each
    latent dimension is an independently drawn smooth trajectory, or an i.i.d.

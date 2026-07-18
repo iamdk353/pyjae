@@ -1,10 +1,10 @@
-"""Unit tests for jae.metrics: the non-gameable latent-quality metric panel."""
+"""Unit tests for pyjae.metrics: the non-gameable latent-quality metric panel."""
 
 import numpy as np
 import pytest
 import torch
 
-from jae.metrics import (
+from pyjae.metrics import (
     alignment,
     collapse_report,
     effective_rank,

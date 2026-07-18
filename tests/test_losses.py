@@ -5,7 +5,7 @@ Unit tests for JAE loss functions.
 import pytest
 import torch
 
-from jae.losses import (
+from pyjae.losses import (
     huber_reconstruction_loss,
     jae1_loss_fn,
     jae2_jepa_loss_fn,

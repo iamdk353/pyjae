@@ -1,9 +1,9 @@
-"""Unit tests for jae.data: simulator, evaluation controls, and splits."""
+"""Unit tests for pyjae.data: simulator, evaluation controls, and splits."""
 
 import numpy as np
 import torch
 
-from jae.data import (
+from pyjae.data import (
     make_noise_only,
     phase_shuffle,
     simulate_neural_data,

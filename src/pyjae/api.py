@@ -16,9 +16,9 @@ here is backend-agnostic.
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from jae.metrics import per_channel_vaf, vaf
-from jae.models import JAE1, JAE2
-from jae.utils import get_device, validate_input_data
+from pyjae.metrics import per_channel_vaf, vaf
+from pyjae.models import JAE1, JAE2
+from pyjae.utils import get_device, validate_input_data
 
 _BACKENDS = ("jae1", "jepa")
 
@@ -294,7 +294,7 @@ class JAE:
         y_true, y_pred : array-like, shape (n_samples, n_channels, n_timepoints)
         per_channel : bool, default=False
             If True, return the full per-channel report dict from
-            :func:`jae.metrics.per_channel_vaf`; otherwise return the mean VAF.
+            :func:`pyjae.metrics.per_channel_vaf`; otherwise return the mean VAF.
         """
         if per_channel:
             return per_channel_vaf(y_true, y_pred)

@@ -19,27 +19,27 @@ recordings and recovering the low-dimensional manifold underneath them:
 ## Installation
 
 ```bash
-pip install jae
+pip install pyjae
 ```
 
 Or with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv add jae
+uv add pyjae
 ```
 
 For development from source:
 
 ```bash
-git clone https://github.com/egealtan/jae.git
-cd jae
+git clone https://github.com/egealtan/pyjae.git
+cd pyjae
 uv sync            # installs the package with the dev extras
 ```
 
 ## Quick start
 
 ```python
-from jae import JAE, simulate_neural_data
+from pyjae import JAE, simulate_neural_data
 
 # Simulate a 6D nonlinear manifold observed on 64 noisy channels
 clean, noisy, info = simulate_neural_data(
@@ -111,13 +111,13 @@ uv run python scripts/benchmark.py             # fuller sweep
 
 | Module | Purpose |
 | --- | --- |
-| `jae.api` | `JAE` facade (fit / denoise / score / save / load) over both backends |
-| `jae.models` | `JAE1`, `JAE2`, and shared encoder building blocks |
-| `jae.views` | Modular channel-split and JEPA-mask strategies |
-| `jae.data` | Simulator (Altan et al. generative model) and evaluation controls |
-| `jae.metrics` | Per-channel VAF plus a collapse-resistant latent-quality panel |
-| `jae.baselines` | PCA, Factor Analysis, denoising autoencoder, Wiener oracle |
-| `jae.eval` | Non-gameable benchmark harness |
+| `pyjae.api` | `JAE` facade (fit / denoise / score / save / load) over both backends |
+| `pyjae.models` | `JAE1`, `JAE2`, and shared encoder building blocks |
+| `pyjae.views` | Modular channel-split and JEPA-mask strategies |
+| `pyjae.data` | Simulator (Altan et al. generative model) and evaluation controls |
+| `pyjae.metrics` | Per-channel VAF plus a collapse-resistant latent-quality panel |
+| `pyjae.baselines` | PCA, Factor Analysis, denoising autoencoder, Wiener oracle |
+| `pyjae.eval` | Non-gameable benchmark harness |
 
 ## Requirements
 

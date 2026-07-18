@@ -6,8 +6,8 @@ import tempfile
 import numpy as np
 import pytest
 
-from jae import JAE
-from jae.data import simulate_neural_data
+from pyjae import JAE
+from pyjae.data import simulate_neural_data
 
 
 @pytest.fixture
