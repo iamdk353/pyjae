@@ -15,7 +15,7 @@ latent-quality and invariance panel), :mod:`pyjae.baselines` (PCA, Factor Analys
 denoising autoencoder, Wiener oracle), and :mod:`pyjae.eval` (the benchmark harness).
 """
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 from pyjae.api import JAE
 from pyjae.baselines import (
