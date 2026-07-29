@@ -59,6 +59,13 @@ from pyjae.views import (
     RandomDisjointSplit,
     SpatioTemporalBlockMask,
 )
+from pyjae.viz import (
+    plot_channel_splits,
+    plot_denoising_comparison,
+    plot_latent_manifold,
+    plot_per_channel_vaf,
+    plot_training_history,
+)
 
 __all__ = [
     "__version__",
@@ -99,6 +106,12 @@ __all__ = [
     "jae2_jepa_loss_fn",
     "jepa_loss",
     "vicreg_reg",
+    # Visualization
+    "plot_denoising_comparison",
+    "plot_latent_manifold",
+    "plot_per_channel_vaf",
+    "plot_channel_splits",
+    "plot_training_history",
     # Utils
     "get_device",
     "set_seed",
